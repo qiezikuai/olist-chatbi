@@ -24,8 +24,8 @@
 | MySQL | MySQL84 运行中；`ecommerce` 库 9 表 155 万行实测可连 | analyst 账号实连验证，订单表 99,441 行与简历一致 |
 | 数据 | 表名为短版（`olist_orders` 等，非 `*_dataset`）；库含 customers/orders/order_items/order_payments/order_reviews/products/sellers/geolocation/category_translation | `SHOW TABLES` + COUNT 实测 |
 | SiliconFlow | 账号已注册，Key 由发起人持有；**Key 只由发起人亲自填入 .env，不进聊天窗口** | 发起人确认 |
+| 已解决：vanna 版本 | **2.0.2 为彻底重写**（旧 API 全部移除，改为 Agent/Conversation 架构，`OpenAI_Chat`/`ChromaDB_VectorStore` 不复存在）→ 按预案降锁 **0.7.9**（经典 API 末版，2025-04-10）；组合类 8 个关键方法实测全部可用；另补装 openai、chromadb（vanna 未声明为硬依赖的坑） | 冒烟脚本同环境 import 实测 |
 | 已知修正 | `analyst` 账号实为 ALL PRIVILEGES（非只读）→ Day1 建 `chatbi_ro` SELECT-only 账号 + 应用层只读校验，双保险 | setup_mysql.py 源码核查 |
-| 已知风险 | vanna 最新版已跳 2.0.2（大版本变更，与教程/旧 API 兼容性未验证）→ Day1 冒烟决定锁 2.0.2 或降锁 0.7.x 末版 | PyPI 实时查询 |
 
 ## 2. 技术选型（摘要，详见 docs/PLAN_v2.md 第 5 节）
 
@@ -36,13 +36,19 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 
 - 2026-09-13：接受考核官基准评审（19/30）结论"方向正确、范围失控"。原四周方案按 9 节模板重写为 docs/PLAN_v2.md：MVP 收缩为五件套（最小闭环/自写编排/自纠错1轮/30题评估集/README+git），多 Agent/MCP/Docker/Dify/OpenManus 全部移出关键路径。原 8 岗位 JD 覆盖表作废，简历 bullet 以 A 线标尺重写。
 - 2026-09-13：环境四待办清零（VS Code✅ Watt 代理✅ SiliconFlow✅ Olist 连接✅）。
+- 2026-09-13：**方案 v2.0 通关（27/30），批准开工**。落实考核官三条件：root 密码终端交互输入、冒烟后 SELECT 核行数存档（已实测 9 表/1,550,922 行，待冒烟后经 chatbi_ro 复核）、当日任务可顺延 09-14 但硬节点（09-20/09-27/10-11）不动。
+- 2026-09-13：vanna 版本决策——2.0.2 彻底重写不兼容旧生态，按预案降锁 0.7.9，组合类方法全验证（详见第 1 节）。
 
 ## 4. 待办（当前阻塞点）
 
-1. 发起人将 docs/PLAN_v2.md 带给考核官评分 → 通过即开工 Phase 0
-2. 开工 Day1：发起人在本机终端执行一次 root 密码操作建 chatbi_ro 账号（我来写脚本，密码不经过对话）
-3. 开工 Day1：发起人把 SiliconFlow Key 填入 `.env`（我建好 `.env.example` 后通知，他亲自填）
+1. **发起人**：终端运行 `uv run python scripts/create_readonly_user.py`（交互输 root 密码）→ 完成 P0.2
+2. **发起人**：复制 `.env.example` 为 `.env`，填入 SiliconFlow Key（不回传聊天）→ 解锁 P1.1
+3. **发起人（可选，今日）**：github.com 新建空仓库 `olist-chatbi`（公开）并开 Watt 加速 → 智谱加 remote 并首推
+4. **智谱（上述完成后）**：跑冒烟 smoke_test.py → chatbi_ro 复核各表行数并更新本文件 → P1.1 闭环
 
 ## 5. 进度日志（每任务闭合后追加，附路径/hash）
 
-- 2026-09-13 环境准备：见第 1 节证据列。本文件即首次落盘。
+- 2026-09-13 ｜ 环境准备完成（证据见第 1 节）｜ commit `263d531`
+- 2026-09-13 ｜ P0.1 完成 ｜ 仓库初始化+uv.lock 锁定（vanna==0.7.9/pymysql/python-dotenv/pytest/openai/chromadb）+ 只读账号脚本 + 冒烟脚本 ｜ commit `263d531`
+- 2026-09-13 ｜ P0.2 脚本就绪待发起人执行 ｜ scripts/create_readonly_user.py（getpass 交互，密码不入对话）｜ commit `263d531`
+- 2026-09-13 ｜ P1.1 冒烟脚本就绪待 Key ｜ scripts/smoke_test.py ｜ commit `263d531`
