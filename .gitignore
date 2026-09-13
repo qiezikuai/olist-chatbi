@@ -1,0 +1,18 @@
+# 机密：永不入库
+.env
+config/db_ro.env
+config/db.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 运行产物
+logs/
+chroma/
+
+# 系统
+.DS_Store
+Thumbs.db
