@@ -42,10 +42,9 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 
 ## 4. 待办（当前阻塞点）
 
-1. **发起人**：终端运行 `uv run python scripts/create_readonly_user.py`（交互输 root 密码）→ 完成 P0.2
-2. **发起人**：复制 `.env.example` 为 `.env`，填入 SiliconFlow Key（不回传聊天）→ 解锁 P1.1
-3. **发起人（可选，今日）**：github.com 新建空仓库 `olist-chatbi`（公开）并开 Watt 加速 → 智谱加 remote 并首推
-4. **智谱（上述完成后）**：跑冒烟 smoke_test.py → chatbi_ro 复核各表行数并更新本文件 → P1.1 闭环
+1. **发起人（阻塞 P1.1）**：SiliconFlow 充值 ≥10 元（预算 ≤30 元已批准）
+2. **发起人（阻塞推送）**：打开 Watt Toolkit 加速
+3. **智谱（上述完成后）**：重跑冒烟 → chatbi_ro 复核 9 表行数并存档口径 → 加 remote 首推 → 更新本文件
 
 ## 5. 进度日志（每任务闭合后追加，附路径/hash）
 
@@ -53,3 +52,5 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 - 2026-09-13 ｜ P0.1 完成 ｜ 仓库初始化+uv.lock 锁定（vanna==0.7.9/pymysql/python-dotenv/pytest/openai/chromadb）+ 只读账号脚本 + 冒烟脚本 ｜ commit `263d531`
 - 2026-09-13 ｜ P0.2 脚本就绪待发起人执行 ｜ scripts/create_readonly_user.py（getpass 交互，密码不入对话）｜ commit `263d531`
 - 2026-09-13 ｜ P1.1 冒烟脚本就绪待 Key ｜ scripts/smoke_test.py ｜ commit `263d531`
+- 2026-09-13 ｜ P1.1 调试（2 轮）：①首跑超时→诊断脚本隔离出根因：**vanna 0.7.9 的 OpenAI_Chat 忽略 config.base_url**（读源码确认，请求误发 api.openai.com）→ 改为注入自建 OpenAI client（base_url+timeout90+retries）②修复后触达 SiliconFlow 但 **402 余额不足**（账户余额 0，vanna 长 prompt 预检被拒；诊断确认 Key 有效、V3.2 直调 0.9s 正常、免费模型亦需余额>0）→ **阻塞点：发起人充值 ≥10 元** ｜ scripts/smoke_test.py+diag_api.py ｜ commit `947142f`
+- 2026-09-13 ｜ P0.2 完成（发起人终端执行，chatbi_ro 已建）；.env 已由发起人填写 ｜ 发起人口头确认
