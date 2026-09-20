@@ -21,7 +21,7 @@
 | VS Code | 1.137.0 已装，Python(含Pylance 2026.3.1)+中文包已配 | 本机安装日志；CLI `--version` 输出 |
 | Git | 2.55.0；github.com 代理作用域配置完成（26561） | `git config --global --get-regexp github` 输出 |
 | Python | 3.12.7 + pip 26.0.1 + uv 0.12.10 | 版本命令输出 |
-| MySQL | MySQL84 运行中；`ecommerce` 库 9 表 155 万行实测可连 | analyst 账号实连验证，订单表 99,441 行与简历一致 |
+| MySQL | MySQL84 运行中；`ecommerce` 库 **9 表 1,550,922 行**（2026-09-13 经 `chatbi_ro` 实测存档：customers 99,441 / geolocation 1,000,163 / order_items 112,650 / order_payments 103,886 / order_reviews 99,224 / orders 99,441 / category_translation 71 / products 32,951 / sellers 3,095；订单表 99,441 与简历口径一致）；`chatbi_ro` 只读已实证（DELETE 被拒，错误码 1142） | pymysql 直连 COUNT 输出 |
 | 数据 | 表名为短版（`olist_orders` 等，非 `*_dataset`）；库含 customers/orders/order_items/order_payments/order_reviews/products/sellers/geolocation/category_translation | `SHOW TABLES` + COUNT 实测 |
 | SiliconFlow | 账号已注册，Key 由发起人持有；**Key 只由发起人亲自填入 .env，不进聊天窗口** | 发起人确认 |
 | 已解决：vanna 版本 | **2.0.2 为彻底重写**（旧 API 全部移除，改为 Agent/Conversation 架构，`OpenAI_Chat`/`ChromaDB_VectorStore` 不复存在）→ 按预案降锁 **0.7.9**（经典 API 末版，2025-04-10）；组合类 8 个关键方法实测全部可用；另补装 openai、chromadb（vanna 未声明为硬依赖的坑） | 冒烟脚本同环境 import 实测 |
@@ -42,11 +42,12 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 
 ## 4. 待办（当前阻塞点）
 
-1. **发起人（阻塞 P1.1，唯一阻塞）**：SiliconFlow 充值 ≥10 元（预算 ≤30 元已批准）
-2. **智谱（充值后）**：重跑冒烟 → chatbi_ro 复核 9 表行数并存档口径 → 更新本文件
-3. ~~GitHub 仓库~~ ✅ https://github.com/qiezikuai/olist-chatbi 已上线（首推完成）
+无阻塞。下一任务：P1.2（DDL+表说明提取 → docs/schema.md）。
 
 ## 5. 进度日志（每任务闭合后追加，附路径/hash）
+
+- 2026-09-13 ｜ **P1.1 完成 ✅ 冒烟通过** ｜ 链路：chatbi_ro 连 MySQL → chroma 训练(1 DDL+1 QA) → SiliconFlow/DeepSeek-V3.2 生成 SQL（285.5 tokens）→ 执行返回 99,441（与简历口径一致）｜ smoke_test.py 输出存档于本条
+- 2026-09-13 ｜ 考核官条件②落实：9 表行数经 chatbi_ro 复核并存档（见第 1 节），合计 1,550,922 行；只读权限实证（DELETE 被拒 1142）
 
 - 2026-09-13 ｜ 环境准备完成（证据见第 1 节）｜ commit `263d531`
 - 2026-09-13 ｜ P0.1 完成 ｜ 仓库初始化+uv.lock 锁定（vanna==0.7.9/pymysql/python-dotenv/pytest/openai/chromadb）+ 只读账号脚本 + 冒烟脚本 ｜ commit `263d531`
