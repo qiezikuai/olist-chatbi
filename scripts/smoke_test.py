@@ -37,22 +37,31 @@ def main() -> None:
     if not db:
         sys.exit("未找到 config/db_ro.env：请先运行 scripts/create_readonly_user.py")
 
+    from openai import OpenAI
     from vanna.openai import OpenAI_Chat
     from vanna.chromadb import ChromaDB_VectorStore
 
+    # vanna 0.7.9 的 OpenAI_Chat 只透传 config["api_key"]、忽略 base_url（读源码确认），
+    # 必须自行构造带 base_url 的 client 注入，否则请求会发到 api.openai.com 导致超时
+    llm_client = OpenAI(
+        api_key=key,
+        base_url="https://api.siliconflow.cn/v1",
+        timeout=90,
+        max_retries=2,
+    )
+
     class MyVanna(ChromaDB_VectorStore, OpenAI_Chat):
-        def __init__(self, config=None):
+        def __init__(self, client=None, config=None):
             ChromaDB_VectorStore.__init__(self, config=config)
-            OpenAI_Chat.__init__(self, config=config)
+            OpenAI_Chat.__init__(self, client=client, config=config)
 
     vn = MyVanna(
+        client=llm_client,
         config={
-            "api_key": key,
-            "base_url": "https://api.siliconflow.cn/v1",
             "model": "deepseek-ai/DeepSeek-V3.2",
             "path": str(ROOT / "chroma"),
             "language": "中文",
-        }
+        },
     )
     vn.connect_to_mysql(
         host=db["host"],
