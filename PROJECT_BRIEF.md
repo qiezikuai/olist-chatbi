@@ -12,7 +12,7 @@
 | 时间线 | 09-13 开工 → 09-20 中期检查 → 09-27 MVP 验收 → 10-11 完整版定稿 |
 | 中断规则 | 舒华/顾诺面试每占 1 个全天，MVP 截止顺延 3 天，或当场砍范围（砍序见清单 3.4） |
 | 红线 | API Key/.env 永不进 AI 上下文与 git；项目放 D 盘 |
-| GitHub 仪式 | 每日先开 Watt Toolkit 加速（HTTP 代理 127.0.0.1:26561）再 push；代理已按作用域配好（仅 github.com） |
+| GitHub 仪式 | **修正（实测）**：Watt Toolkit 运行于 DNS 驱动拦截模式（26561 端口仅 PAC/System 代理模式开启，DNS 模式下不开）→ git **无需代理配置**，开加速后直连即可；原 scoped 代理配置已移除。仪式不变：每日先开 Watt 加速再 push | ls-remote 实测 exit=0；首推成功 |
 
 ## 1. 环境状态（09-13 实测就绪，全部已落盘验证）
 
@@ -42,9 +42,9 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 
 ## 4. 待办（当前阻塞点）
 
-1. **发起人（阻塞 P1.1）**：SiliconFlow 充值 ≥10 元（预算 ≤30 元已批准）
-2. **发起人（阻塞推送）**：打开 Watt Toolkit 加速
-3. **智谱（上述完成后）**：重跑冒烟 → chatbi_ro 复核 9 表行数并存档口径 → 加 remote 首推 → 更新本文件
+1. **发起人（阻塞 P1.1，唯一阻塞）**：SiliconFlow 充值 ≥10 元（预算 ≤30 元已批准）
+2. **智谱（充值后）**：重跑冒烟 → chatbi_ro 复核 9 表行数并存档口径 → 更新本文件
+3. ~~GitHub 仓库~~ ✅ https://github.com/qiezikuai/olist-chatbi 已上线（首推完成）
 
 ## 5. 进度日志（每任务闭合后追加，附路径/hash）
 
@@ -54,3 +54,4 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 - 2026-09-13 ｜ P1.1 冒烟脚本就绪待 Key ｜ scripts/smoke_test.py ｜ commit `263d531`
 - 2026-09-13 ｜ P1.1 调试（2 轮）：①首跑超时→诊断脚本隔离出根因：**vanna 0.7.9 的 OpenAI_Chat 忽略 config.base_url**（读源码确认，请求误发 api.openai.com）→ 改为注入自建 OpenAI client（base_url+timeout90+retries）②修复后触达 SiliconFlow 但 **402 余额不足**（账户余额 0，vanna 长 prompt 预检被拒；诊断确认 Key 有效、V3.2 直调 0.9s 正常、免费模型亦需余额>0）→ **阻塞点：发起人充值 ≥10 元** ｜ scripts/smoke_test.py+diag_api.py ｜ commit `947142f`
 - 2026-09-13 ｜ P0.2 完成（发起人终端执行，chatbi_ro 已建）；.env 已由发起人填写 ｜ 发起人口头确认
+- 2026-09-13 ｜ GitHub 首推完成：仓库 https://github.com/qiezikuai/olist-chatbi 上线，main 分支含全部 6 commits；确认 Watt 为 DNS 驱动模式、git 直连免代理（代理配置已移除）｜ push 输出 + brief 本条
