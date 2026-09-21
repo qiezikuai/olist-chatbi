@@ -16,3 +16,6 @@ chroma/
 # 系统
 .DS_Store
 Thumbs.db
+
+# IDE
+.idea/
