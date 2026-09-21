@@ -45,7 +45,7 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 
 ## 4. 待办（当前阻塞点）
 
-无阻塞、无手工项。**队列指针：▶ P2.2**（自写编排主循环：问题→检索→生成→执行→校验→总结，2h；P2.1 只读执行闸已交付、25 项 pytest 全过）。完整队列见 PLAN_v2 第 9 节。
+无阻塞、无手工项。**队列指针：▶ P2.3**（自纠错 1 轮：报错回填→重写→复跑+日志留痕，2h；P2.2 编排主循环已交付、端到端 3/3 全通）。完整队列见 PLAN_v2 第 9 节。
 
 ## 5. 进度日志（每任务闭合后追加，附路径/hash）
 
@@ -57,6 +57,7 @@ pymysql 1.2.0（已装）+ vanna（版本 Day1 锁定）+ chroma（vanna 内置�
 - 2026-09-20 ｜ **P1.4 完成 ✅ 试跑 3/3 通过** ｜ scripts/train_and_test.py：三路训练（9 DDL+口径文档+10 QA 对）→ 干净重建 chroma → 重新实例化后试跑，生成 SQL 与标准答案逐字一致（黑五 GMV 1,003,862 / 配送 12.5 天 / 州 TOP=SP/RJ/MG 与简历吻合）；chroma HNSW 事故完整分析入 DECISIONS.md D5（真根因=训练后立即查询的竞态+脏段，非版本问题；降级尝试失败反证 1.5.9 在无 MSVC Windows 上更优）｜ commit 见本条 hash
 - 2026-09-20 ｜ **P1.5 完成 ✅ 临时抽测 93.3%（28/30）达标**（执行官交接后 Qoder 首个任务）｜ scripts/p1_5_sampling.py：30 题临时抽测集（单表聚合 8 / 多表关联 10 / 时序环比 6 / 排名对比 6，题型按 PLAN 第 7 节），ground-truth 参考 SQL 30/30 经 chatbi_ro 对库验证可执行、锚点吻合（T1 黑五 GMV=1,003,862.14）；准确率口径=执行结果行级规范化比对（排序无关+数值 2 位容差，沿用 PLAN 第 7 节）。**调优过程**：首轮基线 86.7%（26/30）→ 归因两个可泛化真错并施调优杠杆 →复跑 93.3%（28/30），多表关联与排名对比双双 100%。①口径注入：支付类聚合同样 JOIN orders 并默认排除 canceled/unavailable、TOP-N 直接 GROUP BY 维度列不枚举取值；②示例选择：+2 组 few-shot（各支付方式金额聚合、城市维度排名），刻意不与抽测题逐字重合避免记忆题。**剩余 2 例经核非模型错误**：S4「评价记录数」=COUNT(*) vs COUNT(DISTINCT) 口径歧义（措辞留 P3.1 定夺）、T5「每月订单数」=DATE_FORMAT '%Y-%m' vs MONTH() 整数，数据一致仅格式差（比对器假阴性，P3.2 规范化处理）。`--no-tune` 可复现基线；chroma 遵 D5 干净重建+sleep(2)+重实例化全程无竞态；Key 未入上下文。｜ commit 见本条 hash
 - 2026-09-20 ｜ **P2.1 完成 ✅ 25 项 pytest 全过** ｜ chatbi/executor.py（新建 chatbi 包）：只读 SQL 执行闸，四道防线——①语句白名单（手写扫描挖空字符串/注释得「骨架」再判定，仅放行单条 SELECT/WITH，拦 DML/DDL、多语句、INTO OUTFILE/DUMPFILE、LOAD_FILE）②强制 LIMIT（无则注入，防百万行回传）③超时（会话级 MAX_EXECUTION_TIME 服务端掐断 + 连接 read_timeout 客户端兜底）④错误归一化（pymysql 异常→结构化 SqlError：code∈{TIMEOUT/SYNTAX/SEMANTIC/PERMISSION/DB_ERROR}+errno+stage，供 P2.3 自纠错按类别回喂重写）；execute() 永不抛异常、统一返回 SqlResult。与 chatbi_ro 只读账号构成双保险（D3：应用层白名单挡幻觉、DB 权限层兜底）。**验收实测**：DELETE 在应用层被拒（stage=whitelist，先于 DB）；SELECT SLEEP(10) 在 timeout_s=3 下 <6s 被服务端掐断（code=TIMEOUT）；无 LIMIT 查询强制截断到 max_rows。tests/test_executor.py 25 用例（白名单/LIMIT 纯函数 + 集成经 chatbi_ro）；pyproject 增 [tool.pytest.ini_options] pythonpath/testpaths；修掉 pymysql reconnect=True 弃用告警（改 ping(reconnect=False)+手动重连）。执行闸安全模型决策入 DECISIONS.md D6（白名单+只读账号双保险、手写扫描挖空字符串/注释、服务端 MAX_EXECUTION_TIME 超时、execute 不抛异常返回 SqlResult）。DB 凭据未入上下文。｜ commit 见本条 hash
+- 2026-09-20 ｜ **P2.2 完成 ✅ main.py 端到端 3/3 全通** ｜ chatbi/engine.py + main.py：自写编排主循环（检索→生成→执行→校验→总结），不依赖任何 Agent 框架、每步显式可逐行讲。ChatBIEngine 冷加载已训练 chroma（D5 冷启动正常），只用 vanna 做「检索+生成」、**执行走 P2.1 ReadOnlyExecutor 而非 vanna.run_sql**（执行权归自有只读闸，是"自写编排"而非"调框架"的关键）；ask() 返回结构化 Answer，校验失败处留 P2.3 自纠错扩展点、校验通过后留 P2.4 口径守卫扩展点；总结为确定性格式化（单值→句子 / 多行→markdown 表 / 0 行→提示），不再调 LLM 省 token 且可解释。**实跑 3 问**：①订单数→98,207（非取消口径）②黑五 GMV→1,003,862.14（锚点吻合）③热门类目 TOP5→表格正确（bed_bath_table 9399…）；LIMIT 注入在链路可见（无 LIMIT 自动加 1000、自带 LIMIT 5 不重复注入）。tests/test_engine.py 补 4 项 _summarize 纯函数测试；全量 pytest **29 passed**。Key/DB 凭据未入上下文。｜ commit 见本条 hash
 
 - 2026-09-13 ｜ 环境准备完成（证据见第 1 节）｜ commit `263d531`
 - 2026-09-13 ｜ P0.1 完成 ｜ 仓库初始化+uv.lock 锁定（vanna==0.7.9/pymysql/python-dotenv/pytest/openai/chromadb）+ 只读账号脚本 + 冒烟脚本 ｜ commit `263d531`
