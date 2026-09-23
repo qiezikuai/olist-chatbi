@@ -6,7 +6,7 @@
 
 **评估准确率：29/30 = 96.7%**（30 题留出集，执行结果比对口径，详见 [`eval/report.md`](eval/report.md)）
 
-技术栈：Python 3.12 · vanna 0.7.9（NL2SQL RAG）· ChromaDB · DeepSeek-V3.2（经 SiliconFlow）· pymysql + MySQL 8.4 · pytest。**零 GPU、全云端 API**。
+技术栈：Python 3.12 · **LangGraph（编排状态图）** · vanna 0.7.9（NL2SQL RAG）· ChromaDB · DeepSeek-V3.2（经 SiliconFlow）· pymysql + MySQL 8.4 · pytest。**零 GPU、全云端 API**。
 
 ---
 
@@ -39,7 +39,7 @@ flowchart TD
     SUM --> ANS["数字 / 表格 / 结论"]
 ```
 
-**关键设计**：vanna 只负责"检索 + 生成"，**执行权交给自写的 `ReadOnlyExecutor`**（不用 `vanna.run_sql`）——这是"自写编排"而非"调框架"的核心；安全靠**架构双保险**（应用层白名单 + DB 只读账号），不靠 prompt（见 [`docs/DECISIONS.md`](docs/DECISIONS.md) D3/D6）。
+**关键设计**：编排流程用 **LangGraph StateGraph** 显式表达（[`chatbi/graph.py`](chatbi/graph.py)：节点=生成/执行/自纠错/守卫/总结，条件边=失败→自纠错、违规→重写复跑、成功→总结，环靠重试上限收敛）；vanna 只负责"检索 + 生成"，**执行权交给自写的 `ReadOnlyExecutor`**（不用 `vanna.run_sql`）——即使用编排框架，执行安全闸仍是自有组件、可逐行讲；安全靠**架构双保险**（应用层白名单 + DB 只读账号），不靠 prompt（见 [`docs/DECISIONS.md`](docs/DECISIONS.md) D3/D6/D7）。
 
 ---
 
@@ -47,8 +47,9 @@ flowchart TD
 
 ```
 chatbi/                     # 编排层产品代码
+  graph.py                  # LangGraph StateGraph 编排（节点 + 条件路由）
+  engine.py                 # 引擎：持有资源 + 被图节点复用的 helper + ask/run_sql 入口
   executor.py               # P2.1 只读 SQL 执行闸（四道防线）
-  engine.py                 # P2.2/2.3/2.4 编排主循环 + 自纠错 + 守卫
   guards.py                 # P2.4 口径/空结果守卫规则（纯函数）
   comparator.py             # P3.2 结果行级规范化比对器
 main.py                     # 端到端入口（CLI 问数）

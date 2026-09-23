@@ -1,6 +1,6 @@
 # ChatBI 评估报告
 
-> 生成时间：2026-09-23 23:15:27｜运行：`uv run python scripts/run_eval.py`
+> 生成时间：2026-09-23 23:52:07｜运行：`uv run python scripts/run_eval.py`
 > 评估集：`eval/questions.yaml`（30 题留出集，与训练 QA 不逐字重合）
 > 引擎：vanna RAG（三路训练）+ DeepSeek-V3.2 + 自纠错 1 轮 + 口径/空结果守卫
 > 准确率口径（PLAN_v2 第 7 节）：分母=30，分子=执行成功且**结果一致**（行级规范化比对，SQL 文本不计）

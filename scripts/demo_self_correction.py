@@ -1,6 +1,6 @@
-"""P2.3 验收 demo：人为构造错误 SQL，触发自纠错 1 轮，验证「自愈」与 logs/ 留痕。
+"""P2.3 验收 demo：人为构造错误 SQL，经 StateGraph 编排触发自纠错 1 轮，验证「自愈」与 logs/ 留痕。
 
-四类构造：
+四类构造（经 engine.run_sql 从 execute 节点入图）：
   1. 未知列   → SEMANTIC → 可重试 → LLM 应改成正确列名
   2. 未知表   → SEMANTIC → 可重试 → LLM 应改成正确表名/补 JOIN
   3. 语法残缺 → SYNTAX   → 可重试 → LLM 应补全
@@ -42,20 +42,20 @@ def main() -> int:
             print(f"[案例 {i}] {q}")
             print(f"  构造错误：{note}")
             print(f"  注入的错误 SQL：{bad}")
-            result, trace = engine.execute_with_correction(q, bad)
-            print(f"  trace.final = {trace.get('final')}")
-            if trace.get("attempt1_sql"):
-                print(f"  重写后 SQL：{trace['attempt1_sql']}")
-            if result.ok:
+            ans = engine.run_sql(q, bad)        # 从 execute 入图：执行→(自纠错)→守卫→总结
+            if ans.trace.get("attempt1_sql"):
+                print(f"  重写后 SQL：{ans.trace['attempt1_sql']}")
+            if ans.ok:
                 healed += 1
-                print(f"  ✓ 自愈成功，结果：{result.rows[:3]}")
+                print(f"  trace.final = {ans.trace.get('final')}")
+                print(f"  ✓ 自愈成功，结果：{ans.result.rows[:3]}")
             else:
-                e = result.error
-                if e.code == "BLOCKED":
+                e = ans.error
+                if e is not None and e.code == "BLOCKED":
                     blocked += 1
                     print(f"  ✓ 按预期安全终止：code={e.code} stage={e.stage}（未触库、未重写）")
                 else:
-                    print(f"  ✗ 仍失败：code={e.code} errno={e.errno} — {e.message[:120]}")
+                    print(f"  ✗ 仍失败：{e}")
     finally:
         engine.close()
 
@@ -64,8 +64,8 @@ def main() -> int:
     print(f"自愈成功 {healed} 例；安全终止 {blocked} 例。")
     print(f"留痕文件：{log}（{'存在' if log.exists() else '缺失'}）")
     if log.exists():
-        print("--- 最近 4 条留痕 ---")
-        for line in log.read_text(encoding="utf-8").splitlines()[-4:]:
+        print("--- 最近 3 条留痕 ---")
+        for line in log.read_text(encoding="utf-8").splitlines()[-3:]:
             print("  " + line[:200])
     return 0
 
