@@ -116,7 +116,7 @@ def write_report(records: list[dict]) -> None:
 
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     L = []
-    L.append("# ChatBI 评估报告（P3.3）")
+    L.append("# ChatBI 评估报告")
     L.append("")
     L.append(f"> 生成时间：{ts}｜运行：`uv run python scripts/run_eval.py`")
     L.append("> 评估集：`eval/questions.yaml`（30 题留出集，与训练 QA 不逐字重合）")

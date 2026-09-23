@@ -53,3 +53,13 @@ def test_is_empty_result():
     assert is_empty_result(SqlResult(ok=True, rows=[], columns=["x"], row_count=0))
     assert not is_empty_result(SqlResult(ok=True, rows=[(1,)], columns=["x"], row_count=1))
     assert not is_empty_result(SqlResult(ok=False))   # 执行失败不算"空结果"
+
+
+def test_payment_question_does_not_trigger_gmv_rule():
+    # P3.4 回归：Q12 教训——"信用卡支付的总金额"是支付题，不应命中 GMV 口径规则被强行改写成 SUM(price)
+    pay_sql = ("SELECT ROUND(SUM(pay.payment_value), 2) FROM olist_order_payments pay "
+               "JOIN olist_orders o ON pay.order_id = o.order_id "
+               "WHERE o.order_status NOT IN ('canceled','unavailable') AND pay.payment_type = 'credit_card'")
+    assert check_caliber("信用卡支付的总金额是多少？", pay_sql) == []
+    # 真·GMV 问题仍应正常校验
+    assert check_caliber("总 GMV 是多少", "SELECT SUM(price) FROM olist_order_items")  # 缺非取消过滤→违规
