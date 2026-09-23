@@ -1,0 +1,178 @@
+# ChatBI 正式评估集（P3.1 产物 · 30 题留出集）
+#
+# 用途：P3.2 pytest 比对器读取本文件，对每题「分别执行 标准SQL 与 生成SQL」，
+#       结果集行级规范化后比对；P3.3 产出准确率报告（分母=30）。
+# 准确率口径（PLAN_v2 第 7 节）：执行成功且结果一致才算对，SQL 文本相似度不参与判定。
+#
+# 留出集纪律：30 题问法与 12 组训练问答对（QA_PAIRS + P1.5 EXTRA_QA）**不逐字重合**，
+#             以检验泛化而非记忆；标准 SQL 全部依据 docs/schema.md + docs/metrics.md 口径，
+#             并经 chatbi_ro 只读账号执行验证（见 eval/verified_results.json）。
+# 题型分布：单表聚合 8 / 多表关联 10 / 时序环比 6 / 排名对比 6 = 30。
+# 全局口径：默认非取消订单 order_status NOT IN ('canceled','unavailable')；履约题用 delivered；
+#           GMV=SUM(order_items.price) 运费不计入；客户数用 customer_unique_id；类目经翻译表转英语。
+
+meta:
+  version: "1.0"
+  total: 30
+  distribution: { 单表聚合: 8, 多表关联: 10, 时序环比: 6, 排名对比: 6 }
+  verified_by: chatbi_ro
+  source: 由 P1.5 临时抽测集正式化，修正歧义题（评价行数明确为 COUNT(*)）
+
+questions:
+  # ---------- 单表聚合 (8) ----------
+  - id: Q01
+    type: 单表聚合
+    question: "一共有多少笔已送达（delivered）的订单？"
+    sql: "SELECT COUNT(*) FROM olist_orders WHERE order_status = 'delivered'"
+    caliber: "履约用 delivered 口径"
+  - id: Q02
+    type: 单表聚合
+    question: "平台累计服务了多少位不同的自然人客户？"
+    sql: "SELECT COUNT(DISTINCT customer_unique_id) FROM olist_customers"
+    caliber: "客户数用 customer_unique_id"
+  - id: Q03
+    type: 单表聚合
+    question: "订单评价的平均分是多少（保留两位小数）？"
+    sql: "SELECT ROUND(AVG(review_score), 2) FROM olist_order_reviews"
+    caliber: ""
+  - id: Q04
+    type: 单表聚合
+    question: "olist_order_reviews 表一共有多少行评价记录？"
+    sql: "SELECT COUNT(*) FROM olist_order_reviews"
+    caliber: "明确数行=COUNT(*)，非去重"
+  - id: Q05
+    type: 单表聚合
+    question: "商品库里一共有多少个不同的商品？"
+    sql: "SELECT COUNT(*) FROM olist_products"
+    caliber: ""
+  - id: Q06
+    type: 单表聚合
+    question: "平台上一共有多少个卖家？"
+    sql: "SELECT COUNT(*) FROM olist_sellers"
+    caliber: ""
+  - id: Q07
+    type: 单表聚合
+    question: "状态为 canceled 的订单有多少笔？"
+    sql: "SELECT COUNT(*) FROM olist_orders WHERE order_status = 'canceled'"
+    caliber: ""
+  - id: Q08
+    type: 单表聚合
+    question: "所有订单明细中商品的平均单价是多少？"
+    sql: "SELECT ROUND(AVG(price), 2) FROM olist_order_items"
+    caliber: ""
+
+  # ---------- 多表关联 (10) ----------
+  - id: Q09
+    type: 多表关联
+    question: "全平台的总成交额（GMV）是多少？"
+    sql: "SELECT ROUND(SUM(oi.price), 2) FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable')"
+    caliber: "GMV=SUM(price) 排除取消单"
+  - id: Q10
+    type: 多表关联
+    question: "平台整体客单价是多少？"
+    sql: "SELECT ROUND(SUM(oi.price) / COUNT(DISTINCT o.order_id), 2) FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable')"
+    caliber: "客单价=GMV÷去重订单数"
+  - id: Q11
+    type: 多表关联
+    question: "圣保罗州（SP）贡献的 GMV 是多少？"
+    sql: "SELECT ROUND(SUM(oi.price), 2) FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id JOIN olist_customers c ON o.customer_id = c.customer_id WHERE o.order_status NOT IN ('canceled','unavailable') AND c.customer_state = 'SP'"
+    caliber: "GMV 排除取消单 + customer_state 维度"
+  - id: Q12
+    type: 多表关联
+    question: "信用卡（credit_card）支付的总金额是多少？"
+    sql: "SELECT ROUND(SUM(pay.payment_value), 2) FROM olist_order_payments pay JOIN olist_orders o ON pay.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') AND pay.payment_type = 'credit_card'"
+    caliber: "支付聚合同样排除取消单"
+  - id: Q13
+    type: 多表关联
+    question: "按去重订单数排名，最热门的 5 个英语类目是哪些？"
+    sql: "SELECT t.product_category_name_english, COUNT(DISTINCT oi.order_id) AS order_count FROM olist_order_items oi JOIN olist_products p ON oi.product_id = p.product_id JOIN olist_product_category_translation t ON p.product_category_name = t.product_category_name JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') GROUP BY t.product_category_name_english ORDER BY order_count DESC LIMIT 5"
+    caliber: "类目经翻译表转英语 + 订单去重"
+  - id: Q14
+    type: 多表关联
+    question: "非取消订单里各支付方式分别有多少笔支付记录？"
+    sql: "SELECT pay.payment_type, COUNT(*) AS cnt FROM olist_order_payments pay JOIN olist_orders o ON pay.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') GROUP BY pay.payment_type"
+    caliber: ""
+  - id: Q15
+    type: 多表关联
+    question: "里约州（RJ）客户的订单总数是多少？"
+    sql: "SELECT COUNT(DISTINCT o.order_id) FROM olist_orders o JOIN olist_customers c ON o.customer_id = c.customer_id WHERE o.order_status NOT IN ('canceled','unavailable') AND c.customer_state = 'RJ'"
+    caliber: "订单去重 + 排除取消单"
+  - id: Q16
+    type: 多表关联
+    question: "有多少笔非取消订单是用 boleto 支付的？"
+    sql: "SELECT COUNT(DISTINCT o.order_id) FROM olist_orders o JOIN olist_order_payments pay ON o.order_id = pay.order_id WHERE o.order_status NOT IN ('canceled','unavailable') AND pay.payment_type = 'boleto'"
+    caliber: "订单去重"
+  - id: Q17
+    type: 多表关联
+    question: "已送达订单中评分大于等于 4 分的订单有多少笔？"
+    sql: "SELECT COUNT(DISTINCT o.order_id) FROM olist_orders o JOIN olist_order_reviews r ON o.order_id = r.order_id WHERE o.order_status = 'delivered' AND r.review_score >= 4"
+    caliber: "delivered 口径 + 订单去重"
+  - id: Q18
+    type: 多表关联
+    question: "各英语类目的 GMV 排名前 5 是多少？"
+    sql: "SELECT t.product_category_name_english, ROUND(SUM(oi.price), 2) AS gmv FROM olist_order_items oi JOIN olist_products p ON oi.product_id = p.product_id JOIN olist_product_category_translation t ON p.product_category_name = t.product_category_name JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') GROUP BY t.product_category_name_english ORDER BY gmv DESC LIMIT 5"
+    caliber: "GMV 排除取消单 + 类目转英语"
+
+  # ---------- 时序环比 (6) ----------
+  - id: Q19
+    type: 时序环比
+    question: "2017 年黑五（11 月）的 GMV 是多少？"
+    sql: "SELECT ROUND(SUM(oi.price), 2) FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') AND o.order_purchase_timestamp >= '2017-11-01' AND o.order_purchase_timestamp < '2017-12-01'"
+    caliber: "黑五=2017-11 + GMV 排除取消单"
+  - id: Q20
+    type: 时序环比
+    question: "2017 年 10 月的 GMV 是多少？"
+    sql: "SELECT ROUND(SUM(oi.price), 2) FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') AND o.order_purchase_timestamp >= '2017-10-01' AND o.order_purchase_timestamp < '2017-11-01'"
+    caliber: "GMV 排除取消单 + 下单时间基准"
+  - id: Q21
+    type: 时序环比
+    question: "2017 年 11 月一共有多少笔订单？"
+    sql: "SELECT COUNT(*) FROM olist_orders o WHERE o.order_status NOT IN ('canceled','unavailable') AND o.order_purchase_timestamp >= '2017-11-01' AND o.order_purchase_timestamp < '2017-12-01'"
+    caliber: "排除取消单 + 下单时间基准"
+  - id: Q22
+    type: 时序环比
+    question: "2017 全年的 GMV 是多少？"
+    sql: "SELECT ROUND(SUM(oi.price), 2) FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') AND o.order_purchase_timestamp >= '2017-01-01' AND o.order_purchase_timestamp < '2018-01-01'"
+    caliber: "GMV 排除取消单"
+  - id: Q23
+    type: 时序环比
+    question: "2018 年每个月的订单数分别是多少？"
+    sql: "SELECT MONTH(o.order_purchase_timestamp) AS m, COUNT(*) AS cnt FROM olist_orders o WHERE o.order_status NOT IN ('canceled','unavailable') AND YEAR(o.order_purchase_timestamp) = 2018 GROUP BY m ORDER BY m"
+    caliber: "排除取消单；P3.2 比对需对月份表示做规范化"
+  - id: Q24
+    type: 时序环比
+    question: "2018 年一共有多少笔订单？"
+    sql: "SELECT COUNT(*) FROM olist_orders o WHERE o.order_status NOT IN ('canceled','unavailable') AND YEAR(o.order_purchase_timestamp) = 2018"
+    caliber: "排除取消单"
+
+  # ---------- 排名对比 (6) ----------
+  - id: Q25
+    type: 排名对比
+    question: "GMV 最高的前 5 个州是哪些？"
+    sql: "SELECT c.customer_state, ROUND(SUM(oi.price), 2) AS gmv FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id JOIN olist_customers c ON o.customer_id = c.customer_id WHERE o.order_status NOT IN ('canceled','unavailable') GROUP BY c.customer_state ORDER BY gmv DESC LIMIT 5"
+    caliber: "GMV 排除取消单 + customer_state 维度"
+  - id: Q26
+    type: 排名对比
+    question: "订单量最多的前 5 个州是哪些？"
+    sql: "SELECT c.customer_state, COUNT(DISTINCT o.order_id) AS order_count FROM olist_orders o JOIN olist_customers c ON o.customer_id = c.customer_id WHERE o.order_status NOT IN ('canceled','unavailable') GROUP BY c.customer_state ORDER BY order_count DESC LIMIT 5"
+    caliber: "订单去重 + customer_state"
+  - id: Q27
+    type: 排名对比
+    question: "GMV 最高的前 5 个卖家是哪些？"
+    sql: "SELECT oi.seller_id, ROUND(SUM(oi.price), 2) AS gmv FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled','unavailable') GROUP BY oi.seller_id ORDER BY gmv DESC LIMIT 5"
+    caliber: "GMV 排除取消单"
+  - id: Q28
+    type: 排名对比
+    question: "订单量最多的前 5 个城市是哪些？"
+    sql: "SELECT c.customer_city, COUNT(DISTINCT o.order_id) AS order_count FROM olist_orders o JOIN olist_customers c ON o.customer_id = c.customer_id WHERE o.order_status NOT IN ('canceled','unavailable') GROUP BY c.customer_city ORDER BY order_count DESC LIMIT 5"
+    caliber: "订单去重 + customer_city"
+  - id: Q29
+    type: 排名对比
+    question: "自然人客户数最多的前 5 个州是哪些？"
+    sql: "SELECT customer_state, COUNT(DISTINCT customer_unique_id) AS cust FROM olist_customers GROUP BY customer_state ORDER BY cust DESC LIMIT 5"
+    caliber: "客户数用 customer_unique_id"
+  - id: Q30
+    type: 排名对比
+    question: "支付金额最高的前 5 笔订单是哪些？"
+    sql: "SELECT order_id, ROUND(SUM(payment_value), 2) AS total FROM olist_order_payments GROUP BY order_id ORDER BY total DESC LIMIT 5"
+    caliber: "支付金额按订单聚合"
