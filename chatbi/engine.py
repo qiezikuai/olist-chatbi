@@ -73,6 +73,7 @@ class Answer:
     trace: dict = field(default_factory=dict)   # 自纠错留痕（attempt0/attempt1/final）
     caliber_violations: list = field(default_factory=list)  # P2.4 口径守卫：最终仍违反的口径（空=命中）
     empty_retried: bool = False            # P2.4 空结果守卫：是否因 0 行触发过改写
+    guard_trace: dict = field(default_factory=dict)   # P2.4 守卫留痕（供 P3.3 报告统计贡献）
 
 
 class ChatBIEngine:
@@ -142,7 +143,8 @@ class ChatBIEngine:
         return Answer(ok=True, question=question, sql=result.sql, result=result,
                       stage="ok", summary=summary, self_healed=healed, trace=trace,
                       caliber_violations=guard_trace.get("caliber_violations_final", []),
-                      empty_retried=guard_trace.get("empty_trigger", False))
+                      empty_retried=guard_trace.get("empty_trigger", False),
+                      guard_trace=guard_trace)
 
     # ---------- P2.3：执行 + 自纠错 1 轮 ----------
     def execute_with_correction(self, question: str, sql: str) -> tuple[SqlResult, dict]:
