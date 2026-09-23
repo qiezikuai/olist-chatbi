@@ -113,3 +113,38 @@
 - **安全靠架构不靠 prompt**：权限层（DB 只读账号）是硬闸，应用层白名单是可控的前置闸 + 清晰错误源，两层各司其职。
 - **"不触库就拒绝" 优于 "触库后被 DB 拒"**：省一次往返、错误更可读、不给危险语句任何执行机会。
 - **超时要设在"离数据最近的一侧"**：服务端中止查询 > 客户端断开连接。
+
+---
+
+## D7. 编排层用 LangGraph StateGraph 重写（2026-09-23）
+
+**背景/动机**：MVP 五件套已 5/5 闭环、准确率 96.7%。发起人求职同时投「纯 Agent 岗」与「BI 岗」（不分主次），简历需命中 LangChain/LangGraph 关键词。考核官指令：把 P2.2 自写的 imperative 编排主循环用 LangGraph 的 StateGraph 重新表达——**只改「编排层」，其余四层与三个组件原样复用**。
+
+**为什么是 LangGraph（而非 LangChain Agent / 继续自写）**：
+- LangGraph 用「状态图」显式表达 Agent 流程：节点=步骤、条件边=路由、环=重试，天然契合本项目「生成→执行→自纠错→守卫→总结 + 失败回环」的结构。
+- 相比 LangChain 的 Chain/Agent 黑盒，StateGraph 控制流显式、可视化、可逐节点调试——与项目一贯「代码可逐行讲」取向一致。
+- 附带简历关键词价值（LangGraph/LangChain）。
+
+**StateGraph 如何映射原编排**（关键：换表达、不换逻辑）：
+
+| 原 imperative（engine.ask） | StateGraph |
+|---|---|
+| 顺序调用各步骤 | 节点 generate / execute / self_correct / guards / summarize |
+| `if not result.ok and 可重试` | 条件边 execute→self_correct |
+| 自纠错后复跑 | 环 self_correct→execute |
+| apply_guards 里空结果/口径违规重写 | 节点 guards + 条件边 guards→execute（重写后复跑） |
+| 成功收尾 | →summarize→END |
+
+- **state**（TypedDict）：question / sql / result / error / guard_violations / final_answer + 控制字段（repairs / empty_retried / caliber_retried / guard_route 等）。
+- 节点是闭包，**复用** engine 的 helper（_repair_sql / _rewrite_sql / _summarize / _log_trace）与 executor / guards / comparator——组件零重写。
+- `run_sql()` 借「START 条件边：有预置 sql 就跳过 generate 直接 execute」实现，供 demo 注入错误 SQL。
+- 防环失控：repairs<1、empty/caliber_retried 各一次、`recursion_limit=50`。
+
+**踩坑/取舍**：
+- **engine↔graph 循环 import**：graph 在 module 级 import engine 的纯函数（is_retriable_error），engine 在 `__init__` 内「延迟」import build_graph → 破环。
+- `uv add` 后 langgraph-sdk 把 websockets 17.1→16.1.1（传递依赖降级），实测无影响。
+- **环状路径必须单独测**：eval 跑分 0 次触发自纠错/守卫（正确率高、happy-path 走不到环），故另用两个 demo 专门验证 self_correct 环（自愈 3/3）与 guards 重写环（口径违规→13,494,400.74 锚点、空结果→有结果）。只靠评估集会漏测重试/自愈分支。
+
+**沉淀**：
+- **换框架要「只换表达、不换逻辑」**：组件原样复用 + 验收对齐旧版（3 问逐字一致、准确率不退化、测试全过），才敢称等价重写而非重做。
+- 状态图的价值在「显式控制流 + 环」：带回环的重试/自愈流程，StateGraph 比 imperative while 更自解释、易扩展（未来加 checkpoint 持久化 / 人工审批节点，只需加节点+边，不动其余四层）。
