@@ -48,8 +48,16 @@ def run_question(engine: ChatBIEngine, idx: int, question: str) -> bool:
     print(f"  ② 执行 ✓ 返回 {r.row_count} 行，耗时 {r.elapsed_ms}ms")
     print(f"  ③ 校验 ✓ 执行成功、结果结构完整")
 
+    # P2.4 守卫状态
+    notes = []
+    if ans.empty_retried:
+        notes.append("空结果守卫已改写 1 轮")
+    if ans.caliber_violations:
+        notes.append("口径仍未命中：" + "；".join(ans.caliber_violations))
+    print(f"  ④ 守卫(P2.4)：{'；'.join(notes) if notes else '通过（口径命中 / 无空结果）'}")
+
     # 总结阶段
-    print(f"  ④ 总结：\n{ans.summary}")
+    print(f"  ⑤ 总结：\n{ans.summary}")
     return True
 
 

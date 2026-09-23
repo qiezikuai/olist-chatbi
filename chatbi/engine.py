@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from chatbi.executor import ReadOnlyExecutor, SqlError, SqlResult
+from chatbi.guards import check_caliber, is_empty_result
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -70,6 +71,8 @@ class Answer:
     error: SqlError | None = None
     self_healed: bool = False              # 是否经 1 轮自纠错后才成功
     trace: dict = field(default_factory=dict)   # 自纠错留痕（attempt0/attempt1/final）
+    caliber_violations: list = field(default_factory=list)  # P2.4 口径守卫：最终仍违反的口径（空=命中）
+    empty_retried: bool = False            # P2.4 空结果守卫：是否因 0 行触发过改写
 
 
 class ChatBIEngine:
@@ -126,15 +129,20 @@ class ChatBIEngine:
             return Answer(ok=False, question=question, sql=result.sql, result=result,
                           stage="execute", error=result.error, trace=trace)
 
-        # >>> P2.4 扩展点：空结果守卫（0 行→改写重试）+ 口径检查注入 <<<
+        # 步骤 4.5：P2.4 守卫——空结果（0 行）改写重试 + 口径校验/重写
+        result, guard_trace = self.apply_guards(question, result)
 
         # 步骤 5：总结（确定性格式化，不再调 LLM）
         healed = trace.get("final") == "ok_self_healed"
         summary = self._summarize(question, result)
         if healed:
             summary = "（经 1 轮自纠错后成功）\n" + summary
+        if guard_trace.get("caliber_rewrite_sql"):
+            summary = "（经口径守卫修正）\n" + summary
         return Answer(ok=True, question=question, sql=result.sql, result=result,
-                      stage="ok", summary=summary, self_healed=healed, trace=trace)
+                      stage="ok", summary=summary, self_healed=healed, trace=trace,
+                      caliber_violations=guard_trace.get("caliber_violations_final", []),
+                      empty_retried=guard_trace.get("empty_trigger", False))
 
     # ---------- P2.3：执行 + 自纠错 1 轮 ----------
     def execute_with_correction(self, question: str, sql: str) -> tuple[SqlResult, dict]:
@@ -179,7 +187,16 @@ class ChatBIEngine:
         return r1, trace
 
     def _repair_sql(self, question: str, bad_sql: str, error: SqlError) -> str | None:
-        """把失败 SQL + 错误信息 + 相关 DDL 回喂 LLM，要一条修正后的 SELECT。失败返回 None。"""
+        """P2.3：把执行报错回喂 LLM 重写。是 _rewrite_sql 的错误专用包装。"""
+        reason = f"在 MySQL 上执行报错，code={error.code}（errno={error.errno}）：{error.message}"
+        return self._rewrite_sql(question, bad_sql, reason)
+
+    def _rewrite_sql(self, question: str, sql: str, reason: str) -> str | None:
+        """通用重写：把「当前 SQL + 需要修正的原因 + 相关 DDL」回喂 LLM，要一条修正后的 SELECT。
+
+        P2.3（执行报错）与 P2.4（空结果/口径违规）共用此入口。失败返回 None。
+        产物不直接采信——调用方一律再经 ReadOnlyExecutor 执行闸二次安检。
+        """
         ddl_hint = ""
         try:
             with contextlib.redirect_stdout(io.StringIO()):
@@ -189,13 +206,12 @@ class ChatBIEngine:
             ddl_hint = ""
         messages = [
             {"role": "system", "content":
-                "你是 MySQL 专家。用户的一条 SQL 执行失败，请依据错误信息和表结构修正它。"
+                "你是 MySQL 专家。请依据给出的原因和表结构修正下面这条 SQL。"
                 "只输出一条修正后的、可执行的 SELECT 语句，不要解释、不要 markdown 围栏。"},
             {"role": "user", "content":
                 f"业务问题：{question}\n"
-                f"失败的 SQL：{bad_sql}\n"
-                f"错误码：{error.code}（errno={error.errno}）\n"
-                f"错误信息：{error.message}\n"
+                f"当前 SQL：{sql}\n"
+                f"需要修正的原因：{reason}\n"
                 f"相关表结构：\n{ddl_hint}\n"
                 f"请输出修正后的 SELECT 语句："},
         ]
@@ -204,6 +220,51 @@ class ChatBIEngine:
             return _clean_sql(resp.choices[0].message.content)
         except Exception:
             return None
+
+    # ---------- P2.4：空结果守卫 + 口径守卫 ----------
+    def apply_guards(self, question: str, result: SqlResult) -> tuple[SqlResult, dict]:
+        """在执行成功后施加两道守卫，各最多改写 1 轮；返回 (可能更新后的 result, guard_trace)。
+
+        - 空结果守卫：0 行 → 提示"过滤值可能不存在/条件过严"重写 1 轮；仍 0 行则接受为合法答案。
+        - 口径守卫：按问题意图校验 SQL 是否命中 metrics.md 口径；违规则注入口径重写 1 轮并复检。
+        正确的查询两道守卫都不触发 LLM（零额外成本）。
+        """
+        trace: dict = {}
+        sql = result.sql
+
+        # 守卫 1：空结果
+        if is_empty_result(result):
+            trace["empty_trigger"] = True
+            hint = ("上一条 SQL 执行成功但返回 0 行。可能是过滤值不存在（拼写/语言/日期格式不符）"
+                    "或条件过严。请核对口径、修正或放宽过滤条件，仍只输出一条 SELECT。")
+            fixed = self._rewrite_sql(question, sql, hint)
+            trace["empty_rewrite_sql"] = fixed
+            if fixed:
+                r2 = self.executor.execute(fixed)
+                trace["empty_rewrite_ok"] = r2.ok
+                if r2.ok:
+                    trace["empty_rewrite_rows"] = r2.row_count
+                    result, sql = r2, r2.sql
+
+        # 守卫 2：口径
+        violations = check_caliber(question, sql)
+        trace["caliber_violations"] = violations
+        if violations:
+            trace["caliber_trigger"] = True
+            hint = "生成 SQL 未命中项目口径：" + "；".join(violations) + "。请严格按口径修正，仍只输出一条 SELECT。"
+            fixed = self._rewrite_sql(question, sql, hint)
+            trace["caliber_rewrite_sql"] = fixed
+            if fixed:
+                r3 = self.executor.execute(fixed)
+                if r3.ok:
+                    result, sql = r3, r3.sql
+            trace["caliber_violations_final"] = check_caliber(question, sql)
+        else:
+            trace["caliber_violations_final"] = []
+
+        if trace.get("empty_trigger") or trace.get("caliber_trigger"):
+            self._log_trace({"question": question, "trigger": "guards", "final": "guards_done", **trace})
+        return result, trace
 
     def _log_trace(self, trace: dict) -> None:
         """把一次自纠错留痕追加到 logs/self_correction.jsonl（logs/ 已 gitignore，运行产物不入库）。"""
