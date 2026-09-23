@@ -12,7 +12,9 @@ from chatbi.executor import SqlResult
 # 判定函数返回 True=命中口径；返回 False=违规，触发重写并把口径文本回喂 LLM。
 METRIC_RULES = [
     (
-        ["gmv", "成交额", "销售额", "总金额", "交易额", "卖了多少钱"],
+        # 注：不含"总金额"——它过于宽泛，会误命中"信用卡支付的总金额"等支付类问题，
+        # 把正确的 payment_value 查询强行改写成 SUM(price)（P3.3 评估 Q12 踩坑，P3.4 修复）。
+        ["gmv", "成交额", "销售额", "交易额", "卖了多少钱"],
         lambda s: ("price" in s) and ("canceled" in s or "unavailable" in s),
         "GMV 口径=SUM(olist_order_items.price) 且排除 canceled/unavailable 订单（运费不计入）",
     ),
