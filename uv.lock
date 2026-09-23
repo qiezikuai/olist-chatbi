@@ -414,6 +414,7 @@ dependencies = [
     { name = "pymysql" },
     { name = "pytest" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "vanna" },
 ]
 
@@ -424,6 +425,7 @@ requires-dist = [
     { name = "pymysql", specifier = ">=1.2.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "vanna", specifier = "==0.7.9" },
 ]
 
