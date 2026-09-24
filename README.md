@@ -117,6 +117,12 @@ uv run python main.py                          # 跑 3 个内置 demo 问题
 uv run python main.py "2017年黑五的GMV是多少？"  # 或自定义问题
 ```
 
+### 5b. 网页界面（Streamlit 壳）
+```bash
+uv run streamlit run app.py                    # 浏览器对话式问数：输入框 → SQL → 表格 → 结论 + LangGraph 编排折叠区
+```
+界面为纯壳：只调用 `ChatBIEngine.ask()`，引擎实例经 `st.cache_resource` 缓存（避免每问重连 MySQL / 重载 chroma）；凭据仍只走 `.env` / `config/db_ro.env`。
+
 ### 6. 评估跑分（产出准确率报告）
 ```bash
 uv run python scripts/run_eval.py              # → 重写 eval/report.md
