@@ -17,16 +17,16 @@ def get_engine():
     return ChatBIEngine()
 
 
-st.title("📊 电商数仓自然语言问数 Agent")
+st.title("🪙 小数点 · 电商问数助手")
 st.caption(
-    "Olist 电商数仓（9 表 / 155 万行）· NL2SQL（RAG 三路训练）→ 只读执行闸 → 自纠错/口径守卫 → 结论。"
-    "试试：总共有多少笔订单？／黑五 GMV 是多少？／哪个州卖得最好？"
+    "你说中文，我来查数——自动写 SQL、查 155 万行电商数仓、把答案端上来。"
+    "试试：总共有多少笔订单？／2017 年黑五的 GMV 是多少？／哪个州卖得最好？"
 )
 
 engine = get_engine()
 
-question = st.text_input("用自然语言提问", placeholder="例：2017 年黑五月的 GMV 是多少？")
-if st.button("问数", type="primary"):
+question = st.text_input("你想问什么？", placeholder="比如：2017 年黑五的 GMV 是多少？")
+if st.button("问一下", type="primary"):
     if question.strip():
         with st.spinner("检索 → 生成 SQL → 只读执行 → 校验 → 总结…"):
             st.session_state.answer = engine.ask(question.strip())
