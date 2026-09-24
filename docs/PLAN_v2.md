@@ -59,9 +59,10 @@
 | 库 | 用途 | 维护状态 | 锁定 | 替代预案 |
 |---|---|---|---|---|
 | pymysql | 连 MySQL | 活跃 | 1.2.0（已装验证） | mysql-connector-python |
-| vanna | NL2SQL RAG 内核 | **半维护+大版本跳号** | Day1 冒烟后锁 2.0.2；若 2.0 与现有生态不兼容则降锁 0.7.x 末版 | **兜底**：弃 vanna，自写 prompt（schema+口径+示例）+pymysql 直查，+8h，走"放弃自写编排"的止损版 |
-| chromadb | 向量库（vanna 默认） | 活跃 | 随 vanna 锁定 | vanna 支持换后端（faiss 等） |
-| openai SDK | 经 SiliconFlow 兼容端点调 DeepSeek | 活跃 | 随 vanna 依赖 | 换 DeepSeek 官方 SDK |
+| vanna | NL2SQL RAG 内核 | **半维护+大版本跳号** | **0.7.9 实际锁定**（Day1 冒烟实判：2.0 系彻底重写不兼容，降锁经典 API 末版；见 DECISIONS D1） | **兜底**：弃 vanna，自写 prompt（schema+口径+示例）+pymysql 直查，+8h，走"放弃自写编排"的止损版 |
+| chromadb | 向量库（vanna 默认） | 活跃 | **1.5.9 实际锁定**（0.5.x 需本地 C++ 编译，Windows 无 MSVC 构建链；1.5.9 纯 Rust 零编译依赖反而更优，见 DECISIONS D5） | vanna 支持换后端（faiss 等） |
+| openai SDK | 经 SiliconFlow 兼容端点调 DeepSeek | 活跃 | 随 vanna 依赖（client 注入方式绕开 base_url 被吞，见 D2） | 换 DeepSeek 官方 SDK |
+| langgraph | 编排层 StateGraph 表达（D7，2026-09-23 引入；engine.ask 已委托编译图） | 活跃 | 1.2.12（langchain-core 1.6.4） | 退回 imperative 主循环需重建（_repair_sql/_rewrite_sql/_summarize 等 helpers 仍在 engine.py，节点复用它们） |
 | pytest | 评估运行器 | 活跃 | 最新 | 无需 |
 | streamlit | W3 界面 | 活跃 | 最新 | Gradio |
 
