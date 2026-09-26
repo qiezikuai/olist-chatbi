@@ -1,5 +1,5 @@
-/* 小数点品牌视觉：藏青蓝 #1F3864 + 浅蓝底 #E8EEF7；隐藏默认顶栏页脚 */
-#MainMenu, footer, header {
+/* 小数点品牌视觉：藏青蓝 #1F3864 + 浅蓝底 #E8EEF7；仅隐藏底部页脚（保留右上角菜单供打印/主题切换） */
+footer {
   visibility: hidden;
 }
 
