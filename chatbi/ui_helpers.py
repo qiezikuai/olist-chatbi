@@ -99,9 +99,13 @@ def _first_col_date_like(columns: list, rows: list) -> bool:
     if all(isinstance(v, (_dt.date, _dt.datetime)) for v in vals):
         return True
     if all(isinstance(v, str) for v in vals):
+        import warnings
+
         import pandas as pd
 
-        parsed = pd.to_datetime(pd.Series(vals), errors="coerce")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # 日期格式推断告警为展示层噪音
+            parsed = pd.to_datetime(pd.Series(vals), errors="coerce")
         return bool(parsed.notna().mean() >= 0.8)
     return False
 
