@@ -117,11 +117,14 @@ uv run python main.py                          # 跑 3 个内置 demo 问题
 uv run python main.py "2017年黑五的GMV是多少？"  # 或自定义问题
 ```
 
-### 5b. 网页界面（Streamlit 壳）
+### 5b. 网页界面（Streamlit 壳 · 答案优先多轮对话）
 ```bash
-uv run streamlit run app.py                    # 浏览器对话式问数：输入框 → SQL → 表格 → 结论 + LangGraph 编排折叠区
+uv run streamlit run app.py                    # 🪙 小数点 · 电商问数助手
 ```
-界面为纯壳：只调用 `ChatBIEngine.ask()`，引擎实例经 `st.cache_resource` 缓存（避免每问重连 MySQL / 重载 chroma）；凭据仍只走 `.env` / `config/db_ro.env`。
+界面为纯壳：只调用 `ChatBIEngine.ask()`（`st.cache_resource` 缓存引擎，多轮追问不重连 MySQL / 不重载 chroma）。
+布局：示例 chips → 多轮聊天流；每条答案=徽标条（N 行·耗时·chatbi_ro 只读；自纠错/口径守卫命中仅触发时亮）→ 结论大字号 → 自动图表（plotly：单值指标卡 / 时序折线 / 类目横向条形，按结果形状推断）→ 数据表格 + CSV 导出 → SQL 折叠（可复制）→ LangGraph 编排时间线折叠。
+品牌视觉与图表辅助在 `chatbi/ui_helpers.py` + `assets/style.css`；验收脚本 `scripts/accept_ui.py`（AppTest，16 项）。
+新增依赖：plotly 7.0.0（交互式图表，面试演示用；锁定于 uv.lock）。凭据仍只走 `.env` / `config/db_ro.env`。
 
 ### 6. 评估跑分（产出准确率报告）
 ```bash
