@@ -122,7 +122,7 @@ uv run streamlit run app.py                    # 🪙 小数点 · 电商问数�
 界面为纯壳：只调用 `ChatBIEngine.ask()`（`st.cache_resource` 缓存引擎，多轮追问不重连 MySQL / 不重载 chroma）。
 布局：示例 chips → 多轮聊天流；每条答案=徽标条（N 行·耗时·chatbi_ro 只读；自纠错/口径守卫命中仅触发时亮）→ 结论大字号 → 自动图表（plotly：单值指标卡 / 时序折线 / 类目横向条形，按结果形状推断）→ 数据表格 + CSV 导出 → SQL 折叠（可复制）→ LangGraph 编排时间线折叠。
 品牌视觉与图表辅助在 `chatbi/ui_helpers.py` + `assets/style.css`；验收脚本 `scripts/accept_ui.py`（AppTest，16 项）。
-新增依赖：plotly 7.0.0（交互式图表；锁定于 uv.lock）。凭据仍只走 `.env` / `config/db_ro.env`。
+新增依赖：plotly 7.0.0（交互式图表；锁定于 uv.lock）。凭据仍只走 `.env` / `config/db_ro.env`（永不进 git）。
 
 ### 6. 评估跑分（产出准确率报告）
 ```bash
@@ -162,3 +162,7 @@ LLM 生成的 SQL 存在幻觉风险（可能输出 DELETE/DROP）。**安全靠
 - `.env`、`config/*.env`（含 API Key、DB 密码）**永不进 git**（`.gitignore` 首条）。
 - 数据库一律用只读账号 `chatbi_ro` 连接。
 - `chroma/`、`logs/` 为运行产物，已 gitignore，不入库。
+
+## 关于开发方式
+
+本项目开发过程使用 AI 编程工具辅助，全部代码经人工审核、理解并可逐行讲解。

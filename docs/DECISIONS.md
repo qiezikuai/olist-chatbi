@@ -118,7 +118,7 @@
 
 ## D7. 编排层用 LangGraph StateGraph 重写（2026-09-23）
 
-**背景/动机**：MVP 五件套已 5/5 闭环、准确率 96.7%。项目需要命中 LangGraph 编排能力，故将编排层重写。按方案规划：把 P2.2 自写的 imperative 编排主循环用 LangGraph 的 StateGraph 重新表达——**只改「编排层」，其余四层与三个组件原样复用**。
+**背景/动机**：MVP 五件套已 5/5 闭环、准确率 96.7%。项目需要命中 LangGraph 编排能力，故将编排层重写：把 P2.2 自写的 imperative 编排主循环用 LangGraph 的 StateGraph 重新表达——**只改「编排层」，其余四层与三个组件原样复用**。
 
 **为什么是 LangGraph（而非 LangChain Agent / 继续自写）**：
 - LangGraph 用「状态图」显式表达 Agent 流程：节点=步骤、条件边=路由、环=重试，天然契合本项目「生成→执行→自纠错→守卫→总结 + 失败回环」的结构。
