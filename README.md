@@ -68,11 +68,11 @@ eval/
   questions.yaml            # 30 题留出评估集（标准 SQL + 口径标注）
   verified_results.json     # 标准 SQL 验证快照
   report.md                 # 准确率报告
-tests/                      # pytest（51 项）
+tests/                      # pytest（60 项）
 docs/
   schema.md                 # 9 表 DDL + 中文注释（从库生成）
   metrics.md                # 指标口径（唯一口径事实源）
-  DECISIONS.md              # 工程决策与踩坑日志 D1–D6
+  DECISIONS.md              # 工程决策与踩坑日志 D1–D7
 ```
 
 ---

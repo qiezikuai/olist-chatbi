@@ -1,6 +1,6 @@
 """Day1 P0.2：创建 chatbi_ro 只读账号（仅 SELECT @ ecommerce.*）
 
-用法（使用者在自己的终端执行，root 密码交互输入，不经聊天、不落日志）：
+用法（在自己的终端执行，root 密码交互输入、不落日志）：
     cd D:\\projects\\chatbi
     uv run python scripts/create_readonly_user.py
 

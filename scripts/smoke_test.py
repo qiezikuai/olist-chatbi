@@ -1,6 +1,6 @@
 """Day1 P1.1 冒烟：vanna 0.7.9 + MySQL(ecommerce/chatbi_ro) + SiliconFlow(DeepSeek)
 
-前置（使用者手工完成，两项都不过聊天窗口）：
+前置（手工完成以下两项配置）：
   1) uv run python scripts/create_readonly_user.py   # 终端交互输 root 密码
   2) 复制 .env.example 为 .env，填入 SILICONFLOW_API_KEY
 
