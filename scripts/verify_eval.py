@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import json
 import sys
 from decimal import Decimal
@@ -54,10 +55,14 @@ def to_jsonable(rows) -> list:
         for c in row:
             if isinstance(c, Decimal):
                 cells.append(float(c))
+            elif isinstance(c, (datetime.datetime, datetime.date, datetime.time)):
+                cells.append(c.isoformat())
             elif isinstance(c, (bytes, bytearray)):
                 cells.append(c.decode("utf-8", "replace"))
-            else:
+            elif c is None or isinstance(c, (int, float, str)):
                 cells.append(c)
+            else:  # 任何意外类型转字符串，快照写盘永不因类型崩
+                cells.append(str(c))
         out.append(cells)
     return out
 
