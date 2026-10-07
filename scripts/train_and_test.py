@@ -114,13 +114,25 @@ QA_PAIRS = [
 
 
 def main() -> None:
+    # 护栏：本脚本不含干净重建——在已有向量库上运行会追加重复训练数据。
+    chroma_dir = ROOT / "chroma"
+    if chroma_dir.exists() and any(chroma_dir.iterdir()):
+        raise SystemExit(
+            "检测到已存在的向量库：本脚本只适合空库首跑，追加训练会污染知识库。\n"
+            "重建请改用：uv run python scripts/train.py（干净全量）；"
+            "确需在本脚本内重建，请先手工删除 chroma/。"
+        )
+
     # 加载 vanna
     from openai import OpenAI
     from vanna.openai import OpenAI_Chat
     from vanna.chromadb import ChromaDB_VectorStore
 
+    env_path = ROOT / ".env"
+    if not env_path.exists():
+        raise SystemExit("未找到 .env：请复制 .env.example 为 .env 并填入 SILICONFLOW_API_KEY")
     key = None
-    for line in (ROOT / ".env").read_text(encoding="utf-8").splitlines():
+    for line in env_path.read_text(encoding="utf-8").splitlines():
         if line.strip().startswith("SILICONFLOW_API_KEY="):
             key = line.split("=", 1)[1].strip()
     if not key or key == "your_key_here":
