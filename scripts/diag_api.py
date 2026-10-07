@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 key = None
 env_path = ROOT / ".env"
+if not env_path.exists():
+    sys.exit("未找到 .env：请复制 .env.example 为 .env 并填入 SILICONFLOW_API_KEY")
 for line in env_path.read_text(encoding="utf-8").splitlines():
     line = line.strip()
     if line.startswith("SILICONFLOW_API_KEY="):

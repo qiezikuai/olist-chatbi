@@ -175,7 +175,10 @@ class ChatBIEngine:
         try:
             resp = self._client.chat.completions.create(model=self.model, messages=messages)
             return _clean_sql(resp.choices[0].message.content)
-        except Exception:
+        except Exception as e:
+            # 失败原因落日志留痕（排障可见），返回值契约不变
+            self._log_trace({"question": question, "trigger": "rewrite_failed",
+                             "detail": f"{type(e).__name__}: {str(e)[:160]}", "reason": reason[:160]})
             return None
 
     def _log_trace(self, trace: dict) -> None:

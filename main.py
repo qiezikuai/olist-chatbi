@@ -33,15 +33,20 @@ def run_question(engine: ChatBIEngine, idx: int, question: str) -> bool:
 
     # 生成阶段
     if ans.stage == "generate":
-        print(f"  ① 检索+生成 ✗ 失败：{ans.error.code} — {ans.error.message}")
+        err = ans.error
+        detail = f"{err.code} — {err.message}" if err else "生成失败（无错误详情）"
+        print(f"  ① 检索+生成 ✗ 失败：{detail}")
         return False
     print(f"  ① 检索+生成 ✓ SQL：\n     {ans.sql}")
 
     # 执行 + 校验阶段
     if not ans.ok:
         e = ans.error
-        print(f"  ② 执行 ✗ 失败：code={e.code} stage={e.stage} errno={e.errno}")
-        print(f"     {e.message[:160]}")
+        if e is not None:
+            print(f"  ② 执行 ✗ 失败：code={e.code} stage={e.stage} errno={e.errno}")
+            print(f"     {e.message[:160]}")
+        else:
+            print("  ② 执行 ✗ 失败（无错误详情）")
         print("  ③ 校验：未通过（当前链路不做自动重试）")
         return False
     r = ans.result

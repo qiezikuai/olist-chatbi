@@ -316,6 +316,9 @@ def sample(cfg: dict, key: str, tune: bool = True) -> None:
 
     conn.close()
     report(results)
+    if not tune:
+        print("\n注意：本次为基线模式，chroma 已重建为 10 组问答对（不含调优材料）。")
+        print("恢复生产知识库请运行：uv run python scripts/train.py")
 
 
 def report(results: list[dict]) -> None:

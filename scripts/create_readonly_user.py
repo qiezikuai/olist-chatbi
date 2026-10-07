@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pymysql
 
+ROOT = Path(__file__).resolve().parent.parent
+
 
 def main() -> None:
     root_pwd = getpass.getpass("请输入 MySQL root 密码（输入不回显）: ")
@@ -41,7 +43,7 @@ def main() -> None:
     conn.commit()
     conn.close()
 
-    path = Path("config/db_ro.env")
+    path = ROOT / "config" / "db_ro.env"   # 锚定仓库根，不依赖当前工作目录
     path.parent.mkdir(exist_ok=True)
     path.write_text(
         "host=127.0.0.1\n"
