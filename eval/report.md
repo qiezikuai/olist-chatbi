@@ -1,6 +1,6 @@
 # ChatBI 评估报告
 
-> 生成时间：2026-10-07 17:02:19｜运行：`uv run python scripts/run_eval.py`
+> 生成时间：2026-10-07 18:06:05｜运行：`uv run python scripts/run_eval.py`
 > 评估集：`eval/questions.yaml`（30 题留出集，与训练 QA 不逐字重合）
 > 引擎：vanna RAG（三路训练）+ DeepSeek-V3.2 + 自纠错 1 轮 + 口径/空结果守卫
 > 准确率口径：分母=30，分子=执行成功且**结果一致**（行级规范化比对，SQL 文本不计）
@@ -33,9 +33,9 @@
 
 ### 明细
 - **Q23（2018 年每个月的订单数分别是多少？）**：第 0 行不一致：参考 (1.0, 7187.0) vs 生成 ('2018-01', 7187.0)
-  - 生成 SQL：`SELECT DATE_FORMAT(order_purchase_timestamp, '%Y-%m') AS month, COUNT(*) AS order_count FROM olist_orders WHERE order_status NOT IN ('canceled', 'unavailable') AND order_purchase_timestamp >= '2018-01`
-- **Q30（支付金额最高的前 5 笔订单是哪些？）**：第 0 行不一致：参考 ('03caa2c082116e1d31e67e9ae3700499', 13664.08) vs 生成 ('03caa2c082116e1d31e67e9ae3700499', 13440.0)
-  - 生成 SQL：`SELECT oi.order_id, ROUND(SUM(oi.price), 2) AS total_payment FROM olist_order_items oi JOIN olist_orders o ON oi.order_id = o.order_id WHERE o.order_status NOT IN ('canceled', 'unavailable') GROUP BY `
+  - 生成 SQL：`SELECT DATE_FORMAT(order_purchase_timestamp, '%Y-%m') AS month, COUNT(*) AS order_count FROM olist_orders WHERE order_status NOT IN ('canceled','unavailable') AND order_purchase_timestamp >= '2018-01-`
+- **Q30（支付金额最高的前 5 笔订单是哪些？）**：第 0 行不一致：参考 ('03caa2c082116e1d31e67e9ae3700499', 13664.08) vs 生成 ('03caa2c082116e1d31e67e9ae3700499', 109312.64)
+  - 生成 SQL：`SELECT oi.order_id, ROUND(SUM(pay.payment_value), 2) AS total_payment FROM olist_order_payments pay JOIN olist_orders o ON pay.order_id = o.order_id JOIN olist_order_items oi ON o.order_id = oi.order_`
 
 ## 复现
 

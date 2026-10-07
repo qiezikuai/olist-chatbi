@@ -40,6 +40,8 @@
 | `chatbi/guards.py` | 口径规则 `check_caliber`（metrics.md 的可机检子集）+ `is_empty_result` | graph 的 guards 节点 |
 | `chatbi/comparator.py` | 结果集行级规范化比对 `results_match`（排序无关/数值 2 位容差/datetime 归一） | run_eval（评估跑分） |
 | `chatbi/engine.py` | `ChatBIEngine` 资源持有（vanna、OpenAI client、executor）+ helper（`_repair_sql/_rewrite_sql/_summarize/_log_trace`）+ `Answer` 契约；`ask()/run_sql()` 为对外入口 | main.py、app.py、scripts（demo/run_eval/accept_ui） |
+| `chatbi/knowledge.py` | 知识层单源：三路训练材料（DDL 取 schema.md、口径摘要转写 metrics.md、12 组问答对）+ 建库流程（rmtree→训练→sleep(2)→重实例化；自建 client 注入 base_url） | scripts/train.py、archive 脚本（防漂移断言） |
+| `chatbi/secrets.py` | 凭据/配置解析单源：`read_llm_key()`（.env）、`read_db_config()`（config/db_ro.env），基于 python-dotenv | engine、executor、knowledge |
 | `chatbi/graph.py` | LangGraph `StateGraph`：`AgentState` + 5 节点 + 条件路由；节点为闭包复用 engine helper | 仅 engine（`__init__` 内延迟构建） |
 | `chatbi/ui_helpers.py` | 前端纯函数：列名映射/格式化/图表推断/徽标/时间线/CSV | app.py、tests |
 | `app.py` | Streamlit 壳（答案优先多轮对话）；`st.cache_resource` 缓存引擎 | 用户浏览器 |
@@ -49,28 +51,29 @@
 | `eval/report.md` | 跑分报告（由 run_eval 生成） | 阅读者 |
 | `docs/schema.md` | 9 表 DDL+注释（gen_schema_doc 从库生成） | 训练第 1 路取数源、人工参考 |
 | `docs/metrics.md` | 指标口径唯一事实源 | 训练第 2 路摘要来源（人工转写）、guards 规则依据 |
-| `scripts/` | 建号/训练/评估/诊断/演示脚本（历史脚本与在用工具有混放，见 §3 过渡结构说明） | 终端 |
+| `scripts/` | 在用工具：建号/建库/评估/验证/演示；历史一次性脚本收纳于 `scripts/archive/`（见其 README） | 终端 |
 | `tests/` | 60 项 pytest（executor 25 / comparator 9 / ui 9 / guards 8 / self-correction 5 / engine 4） | CI/本地 |
 
 ## 3. 模块调用边界（import 图）
 
 ```
-main.py ──> chatbi.engine ──> chatbi.executor
+main.py ──> chatbi.engine ──> chatbi.executor, chatbi.knowledge(client/vanna 工厂), chatbi.secrets
                 │  └(延迟, __init__ 内)──> chatbi.graph ──> chatbi.executor, chatbi.guards,
                 │                                            chatbi.engine(纯函数 is_retriable_error)
-app.py ──> chatbi.engine + chatbi.ui_helpers ──> (无引擎依赖，只消费 Answer/SqlResult)
-scripts/train.py ──> scripts/p1_5_sampling ──> scripts/train_and_test   ← 知识层暂存于 scripts 的过渡结构
+app.py ──> chatbi.engine + chatbi.ui_helpers ──> (无引擎内部依赖，只消费 Answer/SqlResult)
+scripts/train.py ──> chatbi.knowledge.build()          ← 知识层单源，脚本无自有流程
 scripts/run_eval.py ──> chatbi.engine + chatbi.comparator
-scripts/verify_eval.py ──> 独立 pymysql 连接（不依赖 chatbi，锚点自行核对）
+scripts/verify_eval.py ──> 独立 pymysql 连接（不依赖 chatbi 运行时，锚点自行核对）
+scripts/archive/*  ──> chatbi.knowledge（材料防漂移断言；仅作历史记录）
 scripts/accept_ui.py ──> streamlit AppTest + chatbi.engine
 ```
 
-边界规则（应然）：
+边界规则：
 
 - `chatbi/` 包不 import `scripts/` 任何内容。
 - 入口层只依赖 `engine.ask()/run_sql()` 与 `Answer` 契约，不触碰 graph 内部。
 - 评估层与运行时解耦：`comparator` 仅被 run_eval 消费。
-已知边界现状（过渡结构，规划收敛）：训练正源暂存于 scripts（`train.py → p1_5_sampling → train_and_test` 素材链），计划收敛为包内单一模块；前端为演示壳，直接消费 `Answer` 契约字段（含 trace/guard_trace 留痕）。
+- 凭据解析只在 `chatbi/secrets.py` 一处；训练材料/建库流程只在 `chatbi/knowledge.py` 一处。
 
 ## 4. 编排状态机
 
