@@ -46,24 +46,28 @@ flowchart TD
 ## 目录结构
 
 ```
-chatbi/                     # 编排层产品代码
+chatbi/                     # 产品代码包
   graph.py                  # LangGraph StateGraph 编排（节点 + 条件路由）
   engine.py                 # 引擎：持有资源 + 被图节点复用的 helper + ask/run_sql 入口
   executor.py               # 只读 SQL 执行闸（四道防线）
   guards.py                 # 口径/空结果守卫规则（纯函数）
   comparator.py             # 结果行级规范化比对器
+  knowledge.py              # 知识层单源：三路训练材料 + 向量库构建流程
+  secrets.py                # 凭据/配置解析单源（.env 与 db_ro.env，均不入库）
+  ui_helpers.py             # 前端纯函数（图表推断/格式化/徽标/时间线/CSV）
 main.py                     # 端到端入口（CLI 问数）
+app.py                      # Streamlit 网页前端（答案优先多轮对话）
+assets/style.css            # 前端品牌样式
 scripts/
   create_readonly_user.py   # 建 chatbi_ro 只读账号（root 密码交互输入）
-  train.py                  # 构建向量库（复现第一步）
-  train_and_test.py         # 早期三路训练+试跑（历史脚本，勿在已有向量库上重复运行）
-  p1_5_sampling.py          # 临时抽测+调优（历史脚本；train.py 复用其建库实现）
+  train.py                  # 构建向量库（复现第一步；实现在 chatbi/knowledge.py）
   gen_schema_doc.py         # 从库生成 docs/schema.md
   run_eval.py               # 评估跑分 → eval/report.md
-  verify_eval.py            # 评估集锚点验证
+  verify_eval.py            # 评估集锚点验证 → eval/verified_results.json
+  accept_ui.py              # 前端自动化验证（AppTest）
   demo_self_correction.py   # 自纠错演示
   demo_guards.py            # 守卫演示
-  smoke_test.py / diag_api.py
+  archive/                  # 历史一次性脚本（冒烟/排障/早期训练，见其 README）
 eval/
   questions.yaml            # 30 题留出评估集（标准 SQL + 口径标注）
   verified_results.json     # 标准 SQL 验证快照
@@ -73,6 +77,7 @@ docs/
   schema.md                 # 9 表 DDL + 中文注释（从库生成）
   metrics.md                # 指标口径（唯一口径事实源）
   DECISIONS.md              # 工程决策与踩坑日志 D1–D7
+  ARCHITECTURE.md            # 分层/职责/调用边界/状态机/依赖清单
 ```
 
 ---

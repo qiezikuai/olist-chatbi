@@ -10,7 +10,7 @@
 
 调优杠杆（口径注入 / 示例选择）：
   - 训练材料三路：9 DDL(schema.md) + 指标口径文档(metrics 摘要) + 10 组问答对(few-shot)。
-  - 三路材料全部复用 train_and_test.py，口径单源、不重复维护。
+  - 三路材料取自正源 chatbi/knowledge.py，口径单源、不重复维护。
   - chroma 竞态坑(D5)处置：rm -rf 干净重建 → 训练 → sleep(2) → 重新实例化后再查询。
 
 运行：
@@ -29,11 +29,12 @@ from pathlib import Path
 
 import pymysql
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+ROOT = Path(__file__).resolve().parent.parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# 复用 train_and_test 的三路训练材料，保证口径单源
-from train_and_test import QA_PAIRS, METRICS_CONTEXT, load_ddl  # noqa: E402
+# 训练材料一律取自现行正源 chatbi/knowledge.py（口径单源）
+from chatbi.knowledge import METRICS_CONTEXT, QA_PAIRS, load_ddl  # noqa: E402
 
 NC = "order_status NOT IN ('canceled','unavailable')"  # 默认非取消口径
 
@@ -119,25 +120,10 @@ QUESTIONS: list[dict] = [
 #   - 支付金额聚合漏了「非取消订单」默认口径 → 口径注入(EXTRA_DOC) + 示例选择(EXTRA_QA#1)
 #   - 按字符串维度(城市)排名时 LLM 误以为要先枚举取值 → 示例选择(EXTRA_QA#2) 教它直接 GROUP BY
 # 这两组示例刻意「不与抽测题逐字重合」，避免把抽测做成记忆题；正式留出集准确率以 eval/ 为准。
-# 日期格式假阴性、评价行数口径歧义 不在这里「修」，作为发现项带入正式评估处理。
+# 材料本体已收敛至正源 chatbi/knowledge.py。
 # 用 --no-tune 可关闭本调优，复现首轮基线。
 # ------------------------------------------------------------------
-EXTRA_DOC = """
-## 口径补充
-- 支付类聚合（payment_value 求和、按 payment_type 分组）同样要 JOIN olist_orders 并默认排除 canceled/unavailable，不要只在 olist_order_payments 单表上算。
-- 按某个维度（州/城市/类目/卖家）排名取 TOP-N 时，直接 GROUP BY 该维度列 + ORDER BY 指标 DESC LIMIT N 即可；不需要、也不应该先去枚举该列的具体取值。
-"""
-
-EXTRA_QA = [
-    {
-        "question": "各支付方式的支付金额合计是多少？",
-        "sql": f"SELECT pay.payment_type, ROUND(SUM(pay.payment_value), 2) AS total FROM olist_order_payments pay JOIN olist_orders o ON pay.order_id = o.order_id WHERE o.{NC} GROUP BY pay.payment_type",
-    },
-    {
-        "question": "客户数最多的前 5 个城市是哪些？",
-        "sql": "SELECT customer_city, COUNT(DISTINCT customer_unique_id) AS cust FROM olist_customers GROUP BY customer_city ORDER BY cust DESC LIMIT 5",
-    },
-]
+from chatbi.knowledge import EXTRA_DOC, EXTRA_QA  # noqa: E402
 
 
 # ------------------------------------------------------------------

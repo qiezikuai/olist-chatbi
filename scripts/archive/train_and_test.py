@@ -7,15 +7,20 @@
 
 试跑：随机抽 3 题验证 LLM 生成 SQL 并执行，对比标准答案。
 
-运行：uv run python scripts/train_and_test.py
+运行：uv run python scripts/archive/train_and_test.py
 注意：本脚本不含 chroma 干净重建——在已有向量库上重复运行会追加训练数据；
 正式重建请一律使用 scripts/train.py（rmtree 后全量训练）。
+归档说明：训练材料/建库流程的现行正源是 chatbi/knowledge.py，本脚本仅作历史保留，
+运行时会断言本地材料与正源一致，漂移即报错。
 """
+import sys
 from pathlib import Path
 
 import pymysql
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 # ---------- 第 1 路：DDL（从 schema.md 提取） ----------
@@ -111,6 +116,11 @@ QA_PAIRS = [
         "sql": "SELECT AVG(DATEDIFF(order_delivered_customer_date, order_purchase_timestamp)) AS avg_delivery_days FROM olist_orders WHERE order_status = 'delivered'",
     },
 ]
+
+# 防漂移：历史材料与现行正源（chatbi/knowledge.py）必须逐字一致，否则拒绝运行
+from chatbi import knowledge as _canon  # noqa: E402
+assert METRICS_CONTEXT == _canon.METRICS_CONTEXT, "历史训练材料已漂移，请以 chatbi/knowledge.py 为准"
+assert QA_PAIRS == _canon.QA_PAIRS, "历史问答对已漂移，请以 chatbi/knowledge.py 为准"
 
 
 def main() -> None:

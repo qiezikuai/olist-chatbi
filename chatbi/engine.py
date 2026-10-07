@@ -46,14 +46,9 @@ def _clean_sql(text: str) -> str:
 
 
 def _read_llm_key(env_path: str | Path | None = None) -> str:
-    """从 .env 读 SiliconFlow Key（绝不打印、绝不入 git）。"""
-    p = Path(env_path) if env_path else ROOT / ".env"
-    for line in p.read_text(encoding="utf-8").splitlines():
-        if line.strip().startswith("SILICONFLOW_API_KEY="):
-            k = line.split("=", 1)[1].strip()
-            if k and k != "your_key_here":
-                return k
-    raise RuntimeError("SILICONFLOW_API_KEY 未就绪（.env 未填或为占位符）")
+    """已收敛至 chatbi/secrets.read_llm_key，此处保留薄转发以兼容旧引用。"""
+    from chatbi.secrets import read_llm_key
+    return read_llm_key(env_path)
 
 
 @dataclass
@@ -80,28 +75,21 @@ class ChatBIEngine:
                  model: str = "deepseek-ai/DeepSeek-V3.2",
                  timeout_s: int = 10, max_rows: int = 1000,
                  llm_key: str | None = None):
-        from openai import OpenAI
-        from vanna.openai import OpenAI_Chat
-        from vanna.chromadb import ChromaDB_VectorStore
+        from chatbi.knowledge import new_llm_client, new_vanna
+        from chatbi.secrets import read_llm_key
 
         chroma_dir = Path(chroma_path) if chroma_path else ROOT / "chroma"
-        # 冷加载已训练的向量库（D5：不训练、直接加载实测正常）。未训练则给出明确指引。
+        # 冷加载已训练的向量库（未训练/空目录则给出明确指引，构建时序见 chatbi/knowledge.py）。
         if not chroma_dir.exists() or not any(chroma_dir.iterdir()):
             raise RuntimeError(
                 f"未找到已训练的向量库（{chroma_dir}）。请先运行：uv run python scripts/train.py"
             )
 
-        class _MyVanna(ChromaDB_VectorStore, OpenAI_Chat):
-            def __init__(self, client, config):
-                ChromaDB_VectorStore.__init__(self, config=config)
-                OpenAI_Chat.__init__(self, client=client, config=config)
-
-        key = llm_key or _read_llm_key()
+        key = llm_key or read_llm_key()
         self.model = model
-        self._client = OpenAI(api_key=key, base_url="https://api.siliconflow.cn/v1",
-                              timeout=90, max_retries=2)
+        self._client = new_llm_client(key)
         # vanna 只用于「生成 SQL / 检索 DDL」，不调 connect_to_mysql / run_sql —— 执行走自有只读闸
-        self.vn = _MyVanna(self._client, {"model": model, "path": str(chroma_dir), "language": "中文"})
+        self.vn = new_vanna(self._client, chroma_dir, model=model)
         self.executor = ReadOnlyExecutor.from_env(timeout_s=timeout_s, max_rows=max_rows)
         self.logs_dir = ROOT / "logs"
 

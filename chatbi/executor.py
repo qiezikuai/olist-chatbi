@@ -163,13 +163,9 @@ class ReadOnlyExecutor:
 
     @classmethod
     def from_env(cls, env_path: str | Path | None = None, **kw) -> "ReadOnlyExecutor":
-        """从 config/db_ro.env 读取 chatbi_ro 只读凭据构建执行器（凭据不外泄）。"""
-        path = Path(env_path) if env_path else ROOT / "config" / "db_ro.env"
-        cfg: dict[str, str] = {}
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if '=' in line and not line.strip().startswith('#'):
-                k, v = line.split('=', 1)
-                cfg[k.strip()] = v.strip()
+        """从 config/db_ro.env 读取 chatbi_ro 只读凭据构建执行器（解析收敛在 chatbi/secrets）。"""
+        from chatbi.secrets import read_db_config
+        cfg = read_db_config(env_path)
         return cls(host=cfg['host'], user=cfg['user'], password=cfg['password'],
                    database=cfg['database'], port=cfg.get('port', 3306), **kw)
 

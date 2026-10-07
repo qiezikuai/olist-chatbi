@@ -1,26 +1,23 @@
-"""构建/重建向量库（三路训练 + 调优材料）。
+"""构建/重建向量库——生产唯一正口（实现收敛在 chatbi/knowledge.py，行为单源）。
 
-干净重建 chroma → 训练 9 DDL + 指标口径文档 + 12 组问答对 → sleep(2) → 重实例化
-（时序依据见 DECISIONS.md「chroma HNSW」决策：避免训练后立即查询的竞态/脏段）。
-本脚本只产出向量库、不跑生成与评估；产物 chroma/ 供 main.py 与 run_eval.py 冷加载。
+时序（干净重建 → 三路训练 → sleep(2) → 重实例化）与训练材料均在 knowledge.build 中固化，
+勿在本脚本内另写流程。
 
 运行：uv run python scripts/train.py
-凭据约束：Key/DB 凭据由脚本自读，绝不打印、绝不入 git（chroma/ 亦在 .gitignore）。
+凭据约束：Key/DB 凭据经 chatbi/secrets 自读，绝不打印、绝不入 git（chroma/ 亦在 .gitignore）。
 """
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))  # 支持从任意 cwd 运行
 
-# 复用训练实现，保证训练材料单源（不重复维护口径/示例）
-from p1_5_sampling import build_vanna, read_db_cfg, read_key  # noqa: E402
+from chatbi import knowledge  # noqa: E402
 
 
 def main() -> int:
-    cfg = read_db_cfg()
-    key = read_key()
-    build_vanna(key, cfg, tune=True)   # 干净重建 + 三路训练（含调优材料）
+    knowledge.build(tune=True)
     print("\n✅ 向量库已构建：chroma/（9 DDL + 指标口径文档 + 12 组问答对）")
     print("下一步：")
     print("  uv run python main.py                  # 端到端问数（3 个 demo 问题）")
