@@ -1,13 +1,13 @@
-"""P3.3：评估跑分 + 报告产出 → eval/report.md（方向标要求的 30 题准确率数字）。
+"""评估跑分 + 报告产出 → eval/report.md（30 题执行准确率数字）。
 
 流程：对 eval/questions.yaml 每题——
   1. 走完整引擎 engine.ask(question)（检索→生成→执行→自纠错→守卫→总结）得到「生成结果」
   2. 用只读执行器跑「标准 SQL」得到「参考结果」
   3. chatbi.comparator.results_match 行级规范化比对判分
-准确率口径（PLAN_v2 第 7 节）：分母=30，分子=执行成功且结果一致；SQL 文本相似度不参与判定。
+准确率口径：分母=30，分子=执行成功且结果一致；SQL 文本相似度不参与判定。
 
 运行：uv run python scripts/run_eval.py
-红线：Key/DB 凭据由 engine/executor 自读，绝不打印、不入报告。
+凭据约束：Key/DB 凭据由 engine/executor 自读，绝不打印、不入报告。
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def main() -> int:
     questions = load_questions()
     engine = ChatBIEngine()
     records: list[dict] = []
-    print(f"===== P3.3 评估跑分：{len(questions)} 题 =====")
+    print(f"===== 评估跑分：{len(questions)} 题 =====")
     try:
         for i, q in enumerate(questions, 1):
             qid, qtype, question, std_sql = q["id"], q["type"], q["question"], q["sql"]
@@ -121,7 +121,7 @@ def write_report(records: list[dict]) -> None:
     L.append(f"> 生成时间：{ts}｜运行：`uv run python scripts/run_eval.py`")
     L.append("> 评估集：`eval/questions.yaml`（30 题留出集，与训练 QA 不逐字重合）")
     L.append("> 引擎：vanna RAG（三路训练）+ DeepSeek-V3.2 + 自纠错 1 轮 + 口径/空结果守卫")
-    L.append("> 准确率口径（PLAN_v2 第 7 节）：分母=30，分子=执行成功且**结果一致**（行级规范化比对，SQL 文本不计）")
+    L.append("> 准确率口径：分母=30，分子=执行成功且**结果一致**（行级规范化比对，SQL 文本不计）")
     L.append("")
     L.append("## 总准确率")
     L.append("")
@@ -137,9 +137,9 @@ def write_report(records: list[dict]) -> None:
     L.append("")
     L.append("## 自纠错 / 守卫贡献")
     L.append("")
-    L.append(f"- 经自纠错（P2.3）后成功：{healed} 题")
-    L.append(f"- 经口径守卫（P2.4）触发修正：{caliber_fixed} 题")
-    L.append(f"- 经空结果守卫（P2.4）触发改写：{empty_retried} 题")
+    L.append(f"- 经自纠错后成功：{healed} 题")
+    L.append(f"- 经口径守卫触发修正：{caliber_fixed} 题")
+    L.append(f"- 经空结果守卫触发改写：{empty_retried} 题")
     L.append("")
     L.append("## Bad case 归因")
     L.append("")
@@ -160,7 +160,7 @@ def write_report(records: list[dict]) -> None:
     L.append("## 复现")
     L.append("")
     L.append("```bash")
-    L.append("uv run python scripts/train_and_test.py   # 或 p1_5_sampling.py：训练向量库")
+    L.append("uv run python scripts/train.py           # 构建/重建向量库（干净全量）")
     L.append("uv run python scripts/run_eval.py          # 跑分并重生成本报告")
     L.append("```")
     L.append("")
@@ -171,7 +171,7 @@ def write_report(records: list[dict]) -> None:
     out.write_text("\n".join(L), encoding="utf-8")
 
     print("\n" + "=" * 56)
-    print(f"P3.3 总准确率：{passed}/{total} = {passed/total*100:.1f}%")
+    print(f"总准确率：{passed}/{total} = {passed/total*100:.1f}%")
     for t in TYPES:
         p, n = by_type[t]
         print(f"  {t}: {p}/{n} = {p/n*100:.0f}%")

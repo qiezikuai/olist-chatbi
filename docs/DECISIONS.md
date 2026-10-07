@@ -46,7 +46,7 @@
 
 **风险**：LLM 生成 SQL 存在幻觉（可能输出 DELETE/UPDATE/DROP）；若执行账号权限过大，一次幻觉=一次数据事故。
 
-**处置**：新建 `chatbi_ro@localhost`，仅 `GRANT SELECT ON ecommerce.*`，密码随机 20 位，凭据写入 `config/db_ro.env`（已 gitignore）。实测 `DELETE` 被拒（错误码 1142）。应用层再叠一层 SQL 语句白名单校验（P2.1），双保险。
+**处置**：新建 `chatbi_ro@localhost`，仅 `GRANT SELECT ON ecommerce.*`，密码随机 20 位，凭据写入 `config/db_ro.env`（已 gitignore）。实测 `DELETE` 被拒（错误码 1142）。应用层再叠一层 SQL 语句白名单校验（chatbi/executor），双保险。
 
 **沉淀**：
 - **安全靠架构不靠 Prompt**：在 prompt 里写"请只生成 SELECT"的防护力≈0；权限层是硬闸。
@@ -68,7 +68,7 @@
 
 ## D5. chroma HNSW "Nothing found on disk"（2026-09-20）
 
-**现象**：P1.4 训练后试跑，固定模式炸——第 1 题能查，第 2 题起 `chromadb.InternalError: Error creating hnsw segment reader: Nothing found on disk`。
+**现象**：三路训练后试跑，固定模式炸——第 1 题能查，第 2 题起 `chromadb.InternalError: Error creating hnsw segment reader: Nothing found on disk`。
 
 **误诊路径（值得记录）**：
 1. 第一反应："chromadb 1.5.9 新 Rust 架构与 vanna 0.7.9（2025-04）不兼容"→ 尝试降级 0.5.9。
@@ -77,7 +77,7 @@
 
 **真根因**：不是版本兼容，是**训练后立即查询的竞态 + 脏段**。首次运行训练写入后 HNSW 段未完全落盘即查询；重跑时旧脏段与新写入叠加导致段损坏。`rm -rf` 重建 + 训练后 `sleep(2)` + 重新实例化 MyVanna 再查询 → 稳定复现通过。冷启动（不训练、直接加载已有 chroma）实测正常。
 
-**处置**：`train_and_test.py` 采用"训练 → sleep(2) → 重新实例化 → 查询"流程；chroma 目录纳入 .gitignore（运行产物不入库）；**正式训练前必须 rm -rf chroma/ 干净重建**（已写入 PLAN P1.4 验收标准）。
+**处置**：训练流程固定为"训练 → sleep(2) → 重新实例化 → 查询"；chroma 目录纳入 .gitignore（运行产物不入库）；**正式训练前必须 rm -rf chroma/ 干净重建**（已固化为训练规程，现行实现见 scripts/train.py）。
 
 **沉淀**：
 - 降级失败反而是好事：hnswlib 需要 C++ 工具链，而 1.5.9 纯 Rust 绑定零编译依赖——**在无 MSVC 的 Windows 上，新版本恰恰是正确选择**。"降级保稳"不是万能公式，要验证失败假设。
@@ -88,7 +88,7 @@
 
 ## D6. 只读执行闸的安全模型：白名单 + 只读账号双保险（2026-09-20）
 
-**背景**：P2.1 要落地"只读执行"这道闸。NL2SQL 的 SQL 由 LLM 生成、存在幻觉——可能输出 DELETE/UPDATE/DROP，甚至 `SELECT ... INTO OUTFILE` 写文件、`LOAD_FILE()` 读服务器文件。
+**背景**：要落地"只读执行"这道闸。NL2SQL 的 SQL 由 LLM 生成、存在幻觉——可能输出 DELETE/UPDATE/DROP，甚至 `SELECT ... INTO OUTFILE` 写文件、`LOAD_FILE()` 读服务器文件。
 
 **决策 1：为什么"应用层白名单 + DB 只读账号"双层，而非只靠一层？**
 - 只靠 prompt 写"请只生成 SELECT"：防护力≈0（D3 已记），LLM 可被绕过或自行幻觉。
@@ -106,7 +106,7 @@
 - 两者叠加：服务端掐断为主、客户端 `read_timeout` 兜底（防服务端未及时中止时的网络挂起）。实测 `SELECT SLEEP(10)` 在 `timeout_s=3` 下 <6s 被掐断（code=TIMEOUT）。
 
 **决策 4：为什么 `execute()` 不抛异常、统一返回 `SqlResult`？**
-- 编排层（P2.2）与自纠错（P2.3）需按错误**类别**决策：`SEMANTIC`（未知列/表）可回喂 LLM 重写、`TIMEOUT` 应缩小范围重试、`BLOCKED` 直接终止。异常控制流难以承载这种结构化分类。
+- 编排层与自纠错需按错误**类别**决策：`SEMANTIC`（未知列/表）可回喂 LLM 重写、`TIMEOUT` 应缩小范围重试、`BLOCKED` 直接终止。异常控制流难以承载这种结构化分类。
 - 归一化为 `SqlError(code/errno/stage)`，把"错误"变成可被程序消费的数据，是自纠错闭环的前提。
 
 **沉淀**：
@@ -118,7 +118,7 @@
 
 ## D7. 编排层用 LangGraph StateGraph 重写（2026-09-23）
 
-**背景/动机**：MVP 五件套已 5/5 闭环、准确率 96.7%。项目需要命中 LangGraph 编排能力，故将编排层重写：把 P2.2 自写的 imperative 编排主循环用 LangGraph 的 StateGraph 重新表达——**只改「编排层」，其余四层与三个组件原样复用**。
+**背景/动机**：项目核心链路（执行闸/训练/生成/评估）已完整闭环、准确率 96.7%。为显式表达 Agent 控制流（并对齐主流编排框架生态），将原 imperative 编排主循环用 LangGraph 的 StateGraph 重新表达——**只改「编排层」，其余四层与三个组件原样复用**。
 
 **为什么是 LangGraph（而非 LangChain Agent / 继续自写）**：
 - LangGraph 用「状态图」显式表达 Agent 流程：节点=步骤、条件边=路由、环=重试，天然契合本项目「生成→执行→自纠错→守卫→总结 + 失败回环」的结构。
@@ -146,5 +146,5 @@
 - **环状路径必须单独测**：eval 跑分 0 次触发自纠错/守卫（正确率高、happy-path 走不到环），故另用两个 demo 专门验证 self_correct 环（自愈 3/3）与 guards 重写环（口径违规→13,494,400.74 锚点、空结果→有结果）。只靠评估集会漏测重试/自愈分支。
 
 **沉淀**：
-- **换框架要「只换表达、不换逻辑」**：组件原样复用 + 验收对齐旧版（3 问逐字一致、准确率不退化、测试全过），才敢称等价重写而非重做。
+- **换框架要「只换表达、不换逻辑」**：组件原样复用 + 回归对齐旧版（3 问逐字一致、准确率不退化、测试全过），才敢称等价重写而非重做。
 - 状态图的价值在「显式控制流 + 环」：带回环的重试/自愈流程，StateGraph 比 imperative while 更自解释、易扩展（未来加 checkpoint 持久化 / 人工审批节点，只需加节点+边，不动其余四层）。

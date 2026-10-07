@@ -1,4 +1,4 @@
-"""P1.1 诊断：绕过 vanna 直连 SiliconFlow，定位超时原因。不打印 Key。"""
+"""早期链路诊断（历史排障用）：绕过 vanna 直连 SiliconFlow，定位超时原因。不打印 Key。"""
 import os
 import sys
 import time

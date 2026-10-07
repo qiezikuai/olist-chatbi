@@ -1,4 +1,4 @@
-# Olist 数仓 Schema（P1.2 生成物）
+# Olist 数仓 Schema（脚本从库生成）
 
 > 本文件由 `scripts/gen_schema_doc.py` 从数据库自动生成（DDL 与行数实时拉取），
 > 中文注释人工维护。**改库后必须重新运行脚本**，训练材料以本文件为准。

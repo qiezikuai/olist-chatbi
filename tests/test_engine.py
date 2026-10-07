@@ -1,6 +1,6 @@
-"""P2.2 验收测试：编排引擎的「总结」步骤（纯函数，不调 LLM、不连库）。
+"""编排引擎「总结」步骤测试（纯函数，不调 LLM、不连库）。
 
-端到端 3 问的验收证据见 PROJECT_BRIEF 进度日志（main.py 实跑输出）。
+端到端 3 问的行为基准以 main.py 实跑输出为准。
 这里只覆盖 _summarize 的三种返回形态：单值 / 0 行 / 多行表格。
 """
 from chatbi.engine import ChatBIEngine

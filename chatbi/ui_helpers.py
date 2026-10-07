@@ -1,6 +1,6 @@
 """前端纯函数层：列名映射 / 数字格式化 / 图表推断 / 徽标 / 编排时间线 / CSV。
 
-只消费 Answer/SqlResult 既有字段（契约见 PROJECT_BRIEF 与优化指令 §3），不碰引擎四层。
+只消费 Answer/SqlResult 既有字段，不触碰引擎内部（executor/graph/guards）。
 全部为纯函数（build_figure 除外，仅依赖传入的 DataFrame），便于单测。
 """
 from __future__ import annotations
@@ -111,7 +111,7 @@ def _first_col_date_like(columns: list, rows: list) -> bool:
 
 
 def infer_chart_kind(columns: list, rows: list) -> str:
-    """按优化指令 §5 的形状规则选图型：metric/metrics/line/bar/table/empty。"""
+    """按结果形状选择图型：metric/metrics/line/bar/table/empty。"""
     if not rows:
         return "empty"
     n, c = len(rows), len(columns)

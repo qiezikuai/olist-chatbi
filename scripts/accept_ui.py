@@ -1,10 +1,10 @@
-"""前端优化验收脚本（优化指令 §6.2–§6.6、§6.8）——手动运行，产出证据：
+"""前端自动化验证脚本——手动运行，产出证据：
 
     uv run python scripts/accept_ui.py
 
 覆盖：黑五 GMV 结论含 1,003,862.14 / 订单数 98,207 / 多轮历史+1 且引擎单实例 /
 chips 点击触发 / 图表或指标卡出现 / 口径守卫徽标经 run_sql 注入缺陷 SQL 点亮。
-§6.1（headless health）与 §6.7（diff 范围）由维护者另行核验并记录。
+headless 健康检查与前端资源加载状态由浏览器手工核验并记录。
 """
 from pathlib import Path as _P
 from streamlit.testing.v1 import AppTest
@@ -86,5 +86,5 @@ check("§6 条形图题表格同时可见", len(at4.dataframe) >= 1)
 
 fails = [n for n, ok, _ in PASS if not ok]
 print()
-print(f"== 验收 {'全部通过' if not fails else '存在失败: ' + str(fails)}（{len(PASS) - len(fails)}/{len(PASS)}）==")
+print(f"== 验证 {'全部通过' if not fails else '存在失败: ' + str(fails)}（{len(PASS) - len(fails)}/{len(PASS)}）==")
 raise SystemExit(1 if fails else 0)

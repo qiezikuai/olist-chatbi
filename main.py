@@ -1,14 +1,14 @@
-"""P2.2：ChatBI 端到端编排入口。
+"""ChatBI 端到端编排入口（CLI）。
 
-链路：自然语言问题 → 检索 → 生成 SQL → 只读执行 → 校验 → 总结结论。
-本文件是"自写编排"的可见入口：逐步打印每一阶段，代码可逐行讲。
+链路：自然语言问题 → 检索 → 生成 SQL → 只读执行 → 校验 →（自纠错/守卫）→ 总结结论。
+本文件是编排状态图的可见入口：逐步打印每一阶段，代码可逐行讲。
 
 运行：
   uv run python main.py                       # 跑 3 个内置 demo 问题
   uv run python main.py "总 GMV 是多少？" ...   # 跑自定义问题
 
-前置：向量库需已训练（见 README / scripts/train_and_test.py）。
-红线：LLM Key 与 DB 凭据由 engine/executor 自行从 .env / config/db_ro.env 读取，绝不打印。
+前置：向量库需已训练（见 README「复现步骤」/ scripts/train.py）。
+凭据约束：LLM Key 与 DB 凭据由 engine/executor 自行从 .env / config/db_ro.env 读取，绝不打印。
 """
 from __future__ import annotations
 
@@ -42,19 +42,19 @@ def run_question(engine: ChatBIEngine, idx: int, question: str) -> bool:
         e = ans.error
         print(f"  ② 执行 ✗ 失败：code={e.code} stage={e.stage} errno={e.errno}")
         print(f"     {e.message[:160]}")
-        print("  ③ 校验：未通过（P2.3 将在此按错误类别自纠错重写 1 轮）")
+        print("  ③ 校验：未通过（当前链路不做自动重试）")
         return False
     r = ans.result
     print(f"  ② 执行 ✓ 返回 {r.row_count} 行，耗时 {r.elapsed_ms}ms")
     print(f"  ③ 校验 ✓ 执行成功、结果结构完整")
 
-    # P2.4 守卫状态
+    # 守卫状态（空结果 / 口径）
     notes = []
     if ans.empty_retried:
         notes.append("空结果守卫已改写 1 轮")
     if ans.caliber_violations:
         notes.append("口径仍未命中：" + "；".join(ans.caliber_violations))
-    print(f"  ④ 守卫(P2.4)：{'；'.join(notes) if notes else '通过（口径命中 / 无空结果）'}")
+    print(f"  ④ 守卫（空结果/口径）：{'；'.join(notes) if notes else '通过（口径命中 / 无空结果）'}")
 
     # 总结阶段
     print(f"  ⑤ 总结：\n{ans.summary}")
@@ -63,7 +63,7 @@ def run_question(engine: ChatBIEngine, idx: int, question: str) -> bool:
 
 def main() -> int:
     questions = sys.argv[1:] or DEMO_QUESTIONS
-    print("ChatBI · 自写编排主循环（P2.2）")
+    print("ChatBI · 端到端编排（LangGraph 状态图）")
     print(f"待答问题 {len(questions)} 个；执行链：检索→生成→执行(只读闸)→校验→总结")
 
     try:

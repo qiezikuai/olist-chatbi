@@ -20,7 +20,7 @@ flowchart TD
     RET --> GEN["② 生成：DeepSeek-V3.2 续写 SQL"]
     GEN --> EXE["③ 执行：ReadOnlyExecutor 只读闸"]
 
-    subgraph GUARD["执行闸 · 四道防线 (P2.1)"]
+    subgraph GUARD["执行闸 · 四道防线"]
         direction TB
         W["1 语句白名单：仅 SELECT/WITH<br/>拦 DML·DDL·多语句·INTO OUTFILE·LOAD_FILE"]
         W --> LM["2 强制 LIMIT：无则注入"]
@@ -31,10 +31,10 @@ flowchart TD
     GUARD --> DB[("MySQL ecommerce<br/>chatbi_ro 只读账号")]
 
     DB --> CHK{"④ 校验：执行成功？"}
-    CHK -- "否·可重试<br/>(SEMANTIC/SYNTAX/TIMEOUT)" --> SC["P2.3 自纠错：回填错误+DDL<br/>→ LLM 重写 1 轮"]
+    CHK -- "否·可重试<br/>(SEMANTIC/SYNTAX/TIMEOUT)" --> SC["自纠错：回填错误+DDL<br/>→ LLM 重写 1 轮"]
     SC --> EXE
     CHK -- "否·不可重试<br/>(BLOCKED/PERMISSION)" --> FAIL["安全终止"]
-    CHK -- "是" --> G2["P2.4 守卫：空结果改写 / 口径校验重写"]
+    CHK -- "是" --> G2["守卫：空结果改写 / 口径校验重写"]
     G2 --> SUM["⑤ 总结：确定性格式化<br/>单值→句子 / 多行→表格"]
     SUM --> ANS["数字 / 表格 / 结论"]
 ```
@@ -49,20 +49,20 @@ flowchart TD
 chatbi/                     # 编排层产品代码
   graph.py                  # LangGraph StateGraph 编排（节点 + 条件路由）
   engine.py                 # 引擎：持有资源 + 被图节点复用的 helper + ask/run_sql 入口
-  executor.py               # P2.1 只读 SQL 执行闸（四道防线）
-  guards.py                 # P2.4 口径/空结果守卫规则（纯函数）
-  comparator.py             # P3.2 结果行级规范化比对器
+  executor.py               # 只读 SQL 执行闸（四道防线）
+  guards.py                 # 口径/空结果守卫规则（纯函数）
+  comparator.py             # 结果行级规范化比对器
 main.py                     # 端到端入口（CLI 问数）
 scripts/
   create_readonly_user.py   # 建 chatbi_ro 只读账号（root 密码交互输入）
   train.py                  # 构建向量库（复现第一步）
-  train_and_test.py         # P1.4 三路训练 + 试跑
-  p1_5_sampling.py          # P1.5 30 题临时抽测 + 调优
+  train_and_test.py         # 早期三路训练+试跑（历史脚本，勿在已有向量库上重复运行）
+  p1_5_sampling.py          # 临时抽测+调优（历史脚本；train.py 复用其建库实现）
   gen_schema_doc.py         # 从库生成 docs/schema.md
-  run_eval.py               # P3.3 评估跑分 → eval/report.md
-  verify_eval.py            # P3.1 评估集人工验证
-  demo_self_correction.py   # P2.3 自愈 demo
-  demo_guards.py            # P2.4 守卫 demo
+  run_eval.py               # 评估跑分 → eval/report.md
+  verify_eval.py            # 评估集锚点验证
+  demo_self_correction.py   # 自纠错演示
+  demo_guards.py            # 守卫演示
   smoke_test.py / diag_api.py
 eval/
   questions.yaml            # 30 题留出评估集（标准 SQL + 口径标注）
@@ -121,7 +121,7 @@ uv run streamlit run app.py                    # 🪙 小数点 · 电商问数�
 ```
 界面为纯壳：只调用 `ChatBIEngine.ask()`（`st.cache_resource` 缓存引擎，多轮追问不重连 MySQL / 不重载 chroma）。
 布局：示例 chips → 多轮聊天流；每条答案=徽标条（N 行·耗时·chatbi_ro 只读；自纠错/口径守卫命中仅触发时亮）→ 结论大字号 → 自动图表（plotly：单值指标卡 / 时序折线 / 类目横向条形，按结果形状推断）→ 数据表格 + CSV 导出 → SQL 折叠（可复制）→ LangGraph 编排时间线折叠。
-品牌视觉与图表辅助在 `chatbi/ui_helpers.py` + `assets/style.css`；验收脚本 `scripts/accept_ui.py`（AppTest，16 项）。
+品牌视觉与图表辅助在 `chatbi/ui_helpers.py` + `assets/style.css`；自动化验证脚本 `scripts/accept_ui.py`（AppTest，16 项）。
 新增依赖：plotly 7.0.0（交互式图表；锁定于 uv.lock）。凭据仍只走 `.env` / `config/db_ro.env`（永不进 git）。
 
 ### 6. 评估跑分（产出准确率报告）
@@ -131,7 +131,7 @@ uv run python scripts/run_eval.py              # → 重写 eval/report.md
 
 ### 7. 跑测试
 ```bash
-uv run pytest                                  # 51 passed
+uv run pytest                                  # 60 passed
 ```
 
 ---

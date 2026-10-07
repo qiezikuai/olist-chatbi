@@ -1,4 +1,4 @@
-"""P1.2：从 MySQL 拉取 9 表真实 DDL 与行数，合并中文注释，生成 docs/schema.md
+"""从 MySQL 拉取 9 表真实 DDL 与行数，合并中文注释，生成 docs/schema.md
 
 设计要点：
 - DDL 与行数始终取自数据库（SHOW CREATE TABLE / COUNT），文档不会与库漂移；
@@ -130,7 +130,7 @@ def main() -> None:
     tables = sorted(r[0] for r in cur.fetchall())
 
     lines = [
-        "# Olist 数仓 Schema（P1.2 生成物）",
+        "# Olist 数仓 Schema（脚本从库生成）",
         "",
         "> 本文件由 `scripts/gen_schema_doc.py` 从数据库自动生成（DDL 与行数实时拉取），",
         "> 中文注释人工维护。**改库后必须重新运行脚本**，训练材料以本文件为准。",

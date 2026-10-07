@@ -1,10 +1,10 @@
-"""P3.1：评估集人工验证——经 chatbi_ro 只读执行 30 条标准 SQL，核对锚点，产出验证快照。
+"""评估集验证——经 chatbi_ro 只读执行 30 条标准 SQL，核对锚点，产出验证快照。
 
 做三件事：
   1. 读 eval/questions.yaml，逐条执行标准 SQL（只读账号，绝不打印凭据）。
   2. 对单值题核对锚点数字（与 docs/metrics.md 已验证锚点一致），对多行题核对行数。
-  3. 把规范化后的结果快照写入 eval/verified_results.json（人工验证的机器可读证据，
-     供 P3.3 检测 DB 漂移；P3.2 比对器仍以「实时执行标准 SQL」为准，见 PLAN 第 7 节）。
+  3. 把规范化后的结果快照写入 eval/verified_results.json（验证的机器可读证据，
+     供检测 DB 漂移；跑分比对仍以「实时执行标准 SQL」为准，见 scripts/run_eval.py）。
 
 运行：uv run python scripts/verify_eval.py
 退出码非 0 = 有标准 SQL 执行失败或锚点不符（需修正评估集）。
@@ -21,7 +21,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# 单值题锚点（来自 docs/metrics.md 已验证数字 + P1.5 self-check 实测）
+# 单值题锚点（来自 docs/metrics.md 已验证数字 + 对库实测）
 ANCHORS: dict[str, float] = {
     "Q01": 96478, "Q02": 96096, "Q03": 4.09, "Q04": 99224, "Q05": 32951,
     "Q06": 3095, "Q07": 625, "Q08": 120.65, "Q09": 13494400.74, "Q10": 137.42,

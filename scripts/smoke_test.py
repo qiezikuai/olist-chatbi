@@ -1,14 +1,14 @@
-"""Day1 P1.1 冒烟：vanna 0.7.9 + MySQL(ecommerce/chatbi_ro) + SiliconFlow(DeepSeek)
+"""早期链路冒烟脚本（历史排障用）：vanna 0.7.9 + MySQL(ecommerce/chatbi_ro) + SiliconFlow(DeepSeek)
 
 前置（手工完成以下两项配置）：
   1) uv run python scripts/create_readonly_user.py   # 终端交互输 root 密码
   2) 复制 .env.example 为 .env，填入 SILICONFLOW_API_KEY
 
 运行：uv run python scripts/smoke_test.py
-验收：打印 1 条可执行 SQL + 查询结果（P1.1 完成标志）
+通过标志：打印 1 条可执行 SQL + 查询结果
 
-注意：本脚本含最小训练（1 条 DDL + 1 组问答），正式三路训练在 P1.2-P1.4。
-重复运行会向 chroma 重复写入同一条训练数据，不影响正确性，正式训练前会重置 chroma/ 目录。
+注意：本脚本含最小训练（1 条 DDL + 1 组问答），且样例为早期简版口径、未做干净重建——
+请勿在正式库上运行；正式训练一律用 scripts/train.py（干净全量重建）。
 """
 import sys
 from pathlib import Path
@@ -83,7 +83,7 @@ def main() -> None:
     print("生成 SQL:", sql)
     df = vn.run_sql(sql)
     print(df)
-    print("== P1.1 冒烟通过 ==")
+    print("== 冒烟通过 ==")
 
 
 if __name__ == "__main__":

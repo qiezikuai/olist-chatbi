@@ -1,4 +1,4 @@
-"""P2.3 验收 demo：人为构造错误 SQL，经 StateGraph 编排触发自纠错 1 轮，验证「自愈」与 logs/ 留痕。
+"""自纠错演示 demo：人为构造错误 SQL，经 StateGraph 编排触发自纠错 1 轮，验证「自愈」与 logs/ 留痕。
 
 四类构造（经 engine.run_sql 从 execute 节点入图）：
   1. 未知列   → SEMANTIC → 可重试 → LLM 应改成正确列名

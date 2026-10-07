@@ -1,4 +1,4 @@
-"""P1.4：三路训练 + 10 组问答对试跑，验证 RAG 闭环
+"""早期三路训练 + 10 组问答对试跑脚本（历史；同时提供训练素材的单源定义）
 
 训练数据：
 - 第 1 路：9 表 DDL（从 docs/schema.md 提取）
@@ -8,6 +8,8 @@
 试跑：随机抽 3 题验证 LLM 生成 SQL 并执行，对比标准答案。
 
 运行：uv run python scripts/train_and_test.py
+注意：本脚本不含 chroma 干净重建——在已有向量库上重复运行会追加训练数据；
+正式重建请一律使用 scripts/train.py（rmtree 后全量训练）。
 """
 from pathlib import Path
 
@@ -190,7 +192,7 @@ def main() -> None:
         except Exception as e:
             print(f"  执行失败：{type(e).__name__} {str(e)[:150]}")
 
-    print("\n===== P1.4 试跑完成 =====")
+    print("\n===== 试跑完成 =====")
 
 
 if __name__ == "__main__":

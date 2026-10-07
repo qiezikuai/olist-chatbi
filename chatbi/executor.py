@@ -1,11 +1,11 @@
-"""P2.1：只读 SQL 执行工具——编排层的「执行闸」。
+"""只读 SQL 执行闸——编排层唯一的执行通道。
 
-四道防线（对应 PLAN_v2 P2.1 验收标准）：
+四道防线：
   1. 语句白名单：只放行单条 SELECT / WITH...SELECT；DML/DDL、多语句、
      INTO OUTFILE/DUMPFILE、LOAD_FILE 一律在应用层拒绝（先于 DB）。
   2. 强制 LIMIT：无 LIMIT 的查询自动追加 LIMIT，防百万行回传打爆内存。
   3. 超时：会话级 MAX_EXECUTION_TIME（服务端掐断超时 SELECT）+ 连接 read_timeout（客户端兜底）。
-  4. 错误归一化：任何 DB 异常 → 结构化 SqlError(code/errno/stage/message)，供 P2.3 自纠错回填重写。
+  4. 错误归一化：任何 DB 异常 → 结构化 SqlError(code/errno/stage/message)，供自纠错回填重写。
 
 安全模型：与 DB 只读账号 chatbi_ro（仅 SELECT 权限，见 DECISIONS D3）构成双保险——
 应用层白名单挡 LLM 幻觉语句，DB 权限层兜底，任一层失效另一层仍在。
@@ -30,7 +30,7 @@ _DANGEROUS = ("INTO OUTFILE", "INTO DUMPFILE", "LOAD_FILE(")
 
 @dataclass
 class SqlError:
-    """归一化后的执行错误。code 供上层(P2.3 自纠错)按类别决策是否回喂 LLM 重写。"""
+    """归一化后的执行错误。code 供上层按类别决策是否回喂 LLM 重写。"""
     code: str            # BLOCKED / TIMEOUT / SYNTAX / SEMANTIC / PERMISSION / DB_ERROR
     stage: str           # whitelist / connect / execute
     message: str

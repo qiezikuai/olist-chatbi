@@ -1,10 +1,9 @@
-"""P1.5：30 题临时抽测 + 调优，验证 RAG 泛化能力（执行结果比对口径）
+"""临时抽测 + 调优：30 题快速估计 RAG 泛化水平（执行结果比对口径）
 
-定位：这是 MVP 阶段的「临时抽测」，用于在搭编排层(P2)与正式评估集(P3.1)之前，
-快速得到一个准确率信号并暴露 bad case。正式 30 题评估集(eval/questions.yaml)
-+ pytest 比对器在 P3.1/P3.2 落地，本脚本不替代它们。
+定位：早期「临时抽测」，用于在编排层与正式评估集之前，快速得到准确率信号并暴露 bad case。
+正式 30 题评估集见 eval/questions.yaml + chatbi/comparator.py，本脚本不替代它们。
 
-准确率口径（沿用 PLAN_v2 第 7 节）：
+准确率口径：
   分母 = 30；分子 = 生成 SQL 执行成功且结果与参考 SQL 一致的题数。
   结果集做「行级规范化」后比对：排序无关 + 数值容差(保留 2 位小数)。
   SQL 文本相似度不参与判定。
@@ -18,7 +17,7 @@
   uv run python scripts/p1_5_sampling.py --selfcheck   # 仅执行 30 条参考 SQL，校验 ground truth
   uv run python scripts/p1_5_sampling.py               # 完整抽测（会调用 LLM，产生少量 token 费用）
 
-红线：API Key / DB 密码由脚本自行从 .env / config/db_ro.env 读取，绝不打印、绝不入 git。
+凭据约束：API Key / DB 密码由脚本自行从 .env / config/db_ro.env 读取，绝不打印、绝不入 git。
 """
 from __future__ import annotations
 
@@ -33,14 +32,14 @@ import pymysql
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-# 复用 P1.4 的三路训练材料，保证口径单源
+# 复用 train_and_test 的三路训练材料，保证口径单源
 from train_and_test import QA_PAIRS, METRICS_CONTEXT, load_ddl  # noqa: E402
 
 NC = "order_status NOT IN ('canceled','unavailable')"  # 默认非取消口径
 
 # ------------------------------------------------------------------
 # 30 题临时抽测集
-# 题型分布(PLAN 第7节)：单表聚合 8 / 多表关联 10 / 时序环比 6 / 排名对比 6
+# 题型分布：单表聚合 8 / 多表关联 10 / 时序环比 6 / 排名对比 6
 # 每题 = {id, type, question, sql(参考/ground-truth)}
 # 与 10 组训练问答对刻意不完全重叠，用于检验泛化而非记忆。
 # ------------------------------------------------------------------
@@ -116,15 +115,15 @@ QUESTIONS: list[dict] = [
 
 
 # ------------------------------------------------------------------
-# P1.5 调优杠杆（首轮抽测 26/30=86.7% 后，针对两个「可泛化真错」补强）
-#   - M4：支付金额聚合漏了「非取消订单」默认口径 → 口径注入(EXTRA_DOC) + 示例选择(EXTRA_QA#1)
-#   - R4：按字符串维度(城市)排名时 LLM 误以为要先枚举取值 → 示例选择(EXTRA_QA#2) 教它直接 GROUP BY
-# 这两组示例刻意「不与抽测题逐字重合」，避免把抽测做成记忆题；正式留出集准确率以 P3.3 为准。
-# T5(日期格式假阴性)、S4(COUNT(*) vs DISTINCT 口径歧义) 不在这里「修」，作为发现项带到 P3.1/P3.2。
+# 调优杠杆（首轮抽测 26/30=86.7% 后，针对两个「可泛化真错」补强）
+#   - 支付金额聚合漏了「非取消订单」默认口径 → 口径注入(EXTRA_DOC) + 示例选择(EXTRA_QA#1)
+#   - 按字符串维度(城市)排名时 LLM 误以为要先枚举取值 → 示例选择(EXTRA_QA#2) 教它直接 GROUP BY
+# 这两组示例刻意「不与抽测题逐字重合」，避免把抽测做成记忆题；正式留出集准确率以 eval/ 为准。
+# 日期格式假阴性、评价行数口径歧义 不在这里「修」，作为发现项带入正式评估处理。
 # 用 --no-tune 可关闭本调优，复现首轮基线。
 # ------------------------------------------------------------------
 EXTRA_DOC = """
-## 口径补充（P1.5 调优注入）
+## 口径补充
 - 支付类聚合（payment_value 求和、按 payment_type 分组）同样要 JOIN olist_orders 并默认排除 canceled/unavailable，不要只在 olist_order_payments 单表上算。
 - 按某个维度（州/城市/类目/卖家）排名取 TOP-N 时，直接 GROUP BY 该维度列 + ORDER BY 指标 DESC LIMIT N 即可；不需要、也不应该先去枚举该列的具体取值。
 """
@@ -198,7 +197,7 @@ def is_select(sql: str) -> bool:
 def build_vanna(key: str, cfg: dict, tune: bool = True):
     """干净重建 chroma → 三路训练 → sleep(2) → 重新实例化（遵 D5）。
 
-    tune=True 时叠加 P1.5 调优杠杆（口径注入 EXTRA_DOC + 示例选择 EXTRA_QA）。
+    tune=True 时叠加调优杠杆（口径注入 EXTRA_DOC + 示例选择 EXTRA_QA）。
     """
     from openai import OpenAI
     from vanna.openai import OpenAI_Chat
@@ -230,7 +229,7 @@ def build_vanna(key: str, cfg: dict, tune: bool = True):
     if tune:
         doc += "\n" + EXTRA_DOC.strip()
     vn.train(documentation=doc)
-    print(f"[训练] 第2路 指标口径文档：1 篇{'（含 P1.5 调优注入）' if tune else ''}")
+    print(f"[训练] 第2路 指标口径文档：1 篇{'（含调优补充）' if tune else ''}")
 
     qa_pairs = QA_PAIRS + (EXTRA_QA if tune else [])
     for qa in qa_pairs:
@@ -323,7 +322,7 @@ def report(results: list[dict]) -> None:
     total = len(results)
     passed = sum(1 for r in results if r["status"] == "通过")
     print("\n" + "=" * 56)
-    print(f"P1.5 临时抽测准确率：{passed}/{total} = {passed/total*100:.1f}%")
+    print(f"临时抽测准确率：{passed}/{total} = {passed/total*100:.1f}%")
     print("=" * 56)
     # 分类别
     from collections import defaultdict
@@ -342,7 +341,7 @@ def report(results: list[dict]) -> None:
             print(f"  [{r['id']}|{r['type']}] {r['status']} — {r['question']}")
             if r.get("gen_sql"):
                 print(f"       genSQL: {r['gen_sql'][:180]}")
-    print(f"\n验收线：≥80% → {'达标 ✅' if passed/total >= 0.8 else '未达标，需调优 ❌'}")
+    print(f"\n目标线：≥80% → {'达标 ✅' if passed/total >= 0.8 else '未达标，需调优 ❌'}")
 
 
 if __name__ == "__main__":

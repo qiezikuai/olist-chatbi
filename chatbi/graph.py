@@ -1,4 +1,4 @@
-"""LangGraph 编排层——把 P2.2 的自写主循环用 StateGraph 显式表达。
+"""LangGraph 编排层——把自写编排主循环用 StateGraph 显式表达。
 
 原 imperative 循环（检索→生成→执行→自纠错→守卫→总结）重写为状态图：
   节点 = 各步骤；条件边 = 失败/违规/成功的路由。
@@ -39,7 +39,7 @@ def _caliber_hint(violations: list[str]) -> str:
 
 class AgentState(TypedDict, total=False):
     """编排状态。total=False：各节点增量返回、由 LangGraph 合并。"""
-    # —— 任务建议的核心字段 ——
+    # —— 核心字段 ——
     question: str
     sql: str                    # 当前待执行/已执行的 SQL（重写后被覆盖）
     result: object              # SqlResult
@@ -80,7 +80,7 @@ def build_graph(engine):
         return {"sql": sql, "gen_sql0": sql, "error": None}
 
     def execute(state: AgentState) -> dict:
-        """③ 执行：P2.1 只读执行闸（白名单/LIMIT/超时/错误归一化）。"""
+        """③ 执行：只读执行闸（白名单/LIMIT/超时/错误归一化）。"""
         sql = state["sql"]
         result = engine.executor.execute(sql)
         return {"result": result, "sql": result.sql or sql,
@@ -88,7 +88,7 @@ def build_graph(engine):
                 "stage": "ok" if result.ok else "execute"}
 
     def self_correct(state: AgentState) -> dict:
-        """P2.3 自纠错：把错误回填给 LLM 重写 1 轮（重写产物仍会再过 execute 闸）。"""
+        """自纠错：把错误回填给 LLM 重写 1 轮（重写产物仍会再过 execute 闸）。"""
         err = state.get("error")
         bad_sql = state.get("sql")
         fixed = engine._repair_sql(state["question"], bad_sql, err)
@@ -104,7 +104,7 @@ def build_graph(engine):
         return updates
 
     def guards(state: AgentState) -> dict:
-        """P2.4 守卫：空结果改写 + 口径校验/重写（各最多 1 轮，复用 guards.py 规则）。"""
+        """守卫：空结果改写 + 口径校验/重写（各最多 1 轮，复用 guards.py 规则）。"""
         q = state["question"]
         result = state["result"]
         sql = state["sql"]

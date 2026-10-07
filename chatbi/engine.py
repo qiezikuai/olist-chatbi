@@ -1,10 +1,10 @@
 """编排引擎——「检索 → 生成 → 执行 → 校验 →（自纠错/守卫）→ 总结」端到端链路。
 
-编排流程自 P-LangGraph 起由 chatbi/graph.py 的 **StateGraph** 显式表达（节点=各步骤、条件边=路由）；
+编排流程由 chatbi/graph.py 的 **StateGraph** 显式表达（节点=各步骤、条件边=路由）；
 本模块负责：① 持有资源（vanna 生成器、ReadOnlyExecutor 执行闸、LLM client）② 提供被图节点复用的
 helper（_repair_sql / _rewrite_sql / _summarize / _log_trace）③ 把图的最终 state 映射回 Answer。
 
-四层不变：数据层(MySQL chatbi_ro) / 知识层(三路训练+chroma) / 生成层(vanna) / 评估层(eval) 均不动；
+职责边界：数据(MySQL chatbi_ro) / 知识(三路训练+chroma) / 生成(vanna) / 评估(eval) 保持独立；
 executor.py(执行闸)、guards.py(守卫)、comparator.py(比对器) 原样复用、由图节点包装，不重写。
 
 为什么用 LangGraph、StateGraph 如何映射原编排：见 docs/DECISIONS.md D7。
@@ -68,9 +68,9 @@ class Answer:
     error: SqlError | None = None
     self_healed: bool = False              # 是否经 1 轮自纠错后才成功
     trace: dict = field(default_factory=dict)   # 自纠错留痕（attempt0/attempt1/final）
-    caliber_violations: list = field(default_factory=list)  # P2.4 口径守卫：最终仍违反的口径（空=命中）
-    empty_retried: bool = False            # P2.4 空结果守卫：是否因 0 行触发过改写
-    guard_trace: dict = field(default_factory=dict)   # P2.4 守卫留痕（供 P3.3 报告统计贡献）
+    caliber_violations: list = field(default_factory=list)  # 口径守卫：最终仍违反的口径（空=命中）
+    empty_retried: bool = False            # 空结果守卫：是否因 0 行触发过改写
+    guard_trace: dict = field(default_factory=dict)   # 守卫留痕（供评估报告统计贡献）
 
 
 class ChatBIEngine:
@@ -88,8 +88,7 @@ class ChatBIEngine:
         # 冷加载已训练的向量库（D5：不训练、直接加载实测正常）。未训练则给出明确指引。
         if not chroma_dir.exists() or not any(chroma_dir.iterdir()):
             raise RuntimeError(
-                f"未找到已训练的向量库（{chroma_dir}）。请先运行训练："
-                f"`uv run python scripts/train.py`（或 scripts/train_and_test.py）。"
+                f"未找到已训练的向量库（{chroma_dir}）。请先运行：uv run python scripts/train.py"
             )
 
         class _MyVanna(ChromaDB_VectorStore, OpenAI_Chat):
@@ -118,7 +117,7 @@ class ChatBIEngine:
     def run_sql(self, question: str, sql: str) -> Answer:
         """从 execute 入图（跳过生成）：注入指定 SQL 走 执行→自纠错→守卫→总结。
 
-        供 demo/调试与验收用（人为构造错误 SQL 触发自愈、构造违规 SQL 触发守卫）。
+        供 demo/调试与功能验证用（人为构造错误 SQL 触发自愈、构造违规 SQL 触发守卫）。
         """
         return self._state_to_answer(question, self._invoke({"question": question, "sql": sql}))
 
@@ -145,7 +144,7 @@ class ChatBIEngine:
 
     # ---------- 被图节点复用的 helper ----------
     def _repair_sql(self, question: str, bad_sql: str, error: SqlError) -> str | None:
-        """P2.3：把执行报错回喂 LLM 重写。是 _rewrite_sql 的错误专用包装。"""
+        """把执行报错回喂 LLM 重写。是 _rewrite_sql 的错误专用包装。"""
         reason = f"在 MySQL 上执行报错，code={error.code}（errno={error.errno}）：{error.message}"
         return self._rewrite_sql(question, bad_sql, reason)
 

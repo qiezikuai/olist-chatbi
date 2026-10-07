@@ -1,10 +1,10 @@
-# ChatBI 正式评估集（P3.1 产物 · 30 题留出集）
+# ChatBI 正式评估集（30 题留出集）
 #
-# 用途：P3.2 pytest 比对器读取本文件，对每题「分别执行 标准SQL 与 生成SQL」，
-#       结果集行级规范化后比对；P3.3 产出准确率报告（分母=30）。
-# 准确率口径（PLAN_v2 第 7 节）：执行成功且结果一致才算对，SQL 文本相似度不参与判定。
+# 用途：scripts/run_eval.py + chatbi/comparator.py 读取本文件，对每题「分别执行 标准SQL 与 生成SQL」，
+#       结果集行级规范化后比对，产出准确率报告（分母=30）。
+# 准确率口径：执行成功且结果一致才算对，SQL 文本相似度不参与判定。
 #
-# 留出集纪律：30 题问法与 12 组训练问答对（QA_PAIRS + P1.5 EXTRA_QA）**不逐字重合**，
+# 留出集纪律：30 题问法与 12 组训练问答对（QA_PAIRS + EXTRA_QA）**不逐字重合**，
 #             以检验泛化而非记忆；标准 SQL 全部依据 docs/schema.md + docs/metrics.md 口径，
 #             并经 chatbi_ro 只读账号执行验证（见 eval/verified_results.json）。
 # 题型分布：单表聚合 8 / 多表关联 10 / 时序环比 6 / 排名对比 6 = 30。
@@ -16,7 +16,7 @@ meta:
   total: 30
   distribution: { 单表聚合: 8, 多表关联: 10, 时序环比: 6, 排名对比: 6 }
   verified_by: chatbi_ro
-  source: 由 P1.5 临时抽测集正式化，修正歧义题（评价行数明确为 COUNT(*)）
+  source: 由早期临时抽测集正式化，修正歧义题（评价行数明确为 COUNT(*)）
 
 questions:
   # ---------- 单表聚合 (8) ----------
@@ -138,7 +138,7 @@ questions:
     type: 时序环比
     question: "2018 年每个月的订单数分别是多少？"
     sql: "SELECT MONTH(o.order_purchase_timestamp) AS m, COUNT(*) AS cnt FROM olist_orders o WHERE o.order_status NOT IN ('canceled','unavailable') AND YEAR(o.order_purchase_timestamp) = 2018 GROUP BY m ORDER BY m"
-    caliber: "排除取消单；P3.2 比对需对月份表示做规范化"
+    caliber: "排除取消单；月份以整数表示（比对器按 comparator 的规范化规则处理表示差异）"
   - id: Q24
     type: 时序环比
     question: "2018 年一共有多少笔订单？"

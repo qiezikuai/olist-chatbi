@@ -1,4 +1,4 @@
-"""P2.4：口径守卫 + 空结果判定（纯函数，可单测、不连库、不调 LLM）。
+"""口径守卫 + 空结果判定（纯函数，可单测、不连库、不调 LLM）。
 
 口径守卫的依据是 docs/metrics.md（项目唯一口径事实源）。这里把其中可机器校验的
 高价值口径固化为规则：只对「问题里出现的意图」做检查，命中意图才校验对应 SQL 特征。
@@ -13,7 +13,7 @@ from chatbi.executor import SqlResult
 METRIC_RULES = [
     (
         # 注：不含"总金额"——它过于宽泛，会误命中"信用卡支付的总金额"等支付类问题，
-        # 把正确的 payment_value 查询强行改写成 SUM(price)（P3.3 评估 Q12 踩坑，P3.4 修复）。
+        # 把正确的 payment_value 查询强行改写成 SUM(price)（评估踩坑，已修复并加回归测试）。
         ["gmv", "成交额", "销售额", "交易额", "卖了多少钱"],
         lambda s: ("price" in s) and ("canceled" in s or "unavailable" in s),
         "GMV 口径=SUM(olist_order_items.price) 且排除 canceled/unavailable 订单（运费不计入）",
