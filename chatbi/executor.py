@@ -215,20 +215,26 @@ class ReadOnlyExecutor:
         final_sql, _injected = force_limit(sql, max_rows if max_rows is not None else self.max_rows)
 
         t0 = time.perf_counter()
-        # 防线 3a：连接（带 connect/read 超时）
         try:
-            conn = self._connect()
-        except pymysql.MySQLError as e:
-            return SqlResult(ok=False, sql=final_sql, error=_normalize(e, stage='connect'),
-                             elapsed_ms=int((time.perf_counter() - t0) * 1000))
-        # 防线 3b：执行（会话 MAX_EXECUTION_TIME 掐断慢查询）；防线 4：错误归一化
-        try:
-            with conn.cursor() as cur:
-                cur.execute(final_sql)
-                rows = cur.fetchall()
-                cols = [d[0] for d in cur.description] if cur.description else []
-            return SqlResult(ok=True, sql=final_sql, rows=rows, columns=cols,
-                             row_count=len(rows), elapsed_ms=int((time.perf_counter() - t0) * 1000))
-        except pymysql.MySQLError as e:
-            return SqlResult(ok=False, sql=final_sql, error=_normalize(e, stage='execute'),
+            # 防线 3a：连接（带 connect/read 超时）
+            try:
+                conn = self._connect()
+            except pymysql.MySQLError as e:
+                return SqlResult(ok=False, sql=final_sql, error=_normalize(e, stage='connect'),
+                                 elapsed_ms=int((time.perf_counter() - t0) * 1000))
+            # 防线 3b：执行（会话 MAX_EXECUTION_TIME 掐断慢查询）；防线 4：错误归一化
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(final_sql)
+                    rows = cur.fetchall()
+                    cols = [d[0] for d in cur.description] if cur.description else []
+                return SqlResult(ok=True, sql=final_sql, rows=rows, columns=cols,
+                                 row_count=len(rows), elapsed_ms=int((time.perf_counter() - t0) * 1000))
+            except pymysql.MySQLError as e:
+                return SqlResult(ok=False, sql=final_sql, error=_normalize(e, stage='execute'),
+                                 elapsed_ms=int((time.perf_counter() - t0) * 1000))
+        except Exception as e:  # 非 pymysql 意外异常也归一化，兜住"永不抛异常"契约
+            return SqlResult(ok=False, sql=final_sql,
+                             error=SqlError(code='DB_ERROR', stage='execute',
+                                            message=f"unexpected {type(e).__name__}: {str(e)[:200]}"),
                              elapsed_ms=int((time.perf_counter() - t0) * 1000))

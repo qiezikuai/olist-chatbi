@@ -162,6 +162,13 @@ if _user_q:
     _user_q = str(_user_q).strip()
     if _user_q:
         with st.spinner("检索 → 生成 SQL → 只读执行 → 校验 → 总结…"):
-            _answer = engine.ask(_user_q)
+            try:
+                _answer = engine.ask(_user_q)
+            except Exception as e:  # 兜底：任何意外都以失败 Answer 呈现，不炸整页
+                from chatbi.engine import Answer
+                from chatbi.executor import SqlError
+                _answer = Answer(ok=False, question=_user_q, stage="unexpected",
+                                 error=SqlError(code="INTERNAL", stage="ask",
+                                                message=f"{type(e).__name__}: {str(e)[:200]}"))
         st.session_state.history.append((_user_q, _answer))
         _render_turn(_user_q, _answer, len(st.session_state.history) - 1)
