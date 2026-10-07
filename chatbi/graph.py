@@ -47,7 +47,6 @@ class AgentState(TypedDict, total=False):
     guard_violations: list      # 最终仍违反的口径（空=命中）
     final_answer: str           # 总结文本
     # —— 控制/留痕字段 ——
-    gen_sql0: str               # 首次生成的 SQL
     ok: bool
     stage: str                  # generate / execute / ok
     repairs: int                # 自纠错轮数（≤1）
@@ -77,7 +76,7 @@ def build_graph(engine):
         if not sql or not sql.strip():
             return {"ok": False, "stage": "generate",
                     "error": SqlError(code="EMPTY_SQL", stage="generate", message="生成空 SQL")}
-        return {"sql": sql, "gen_sql0": sql, "error": None}
+        return {"sql": sql, "error": None}
 
     def execute(state: AgentState) -> dict:
         """③ 执行：只读执行闸（白名单/LIMIT/超时/错误归一化）。"""

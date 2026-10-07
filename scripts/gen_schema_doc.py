@@ -8,6 +8,7 @@
 运行：uv run python scripts/gen_schema_doc.py
 产出：docs/schema.md
 """
+import time
 from pathlib import Path
 
 import pymysql
@@ -134,7 +135,7 @@ def main() -> None:
         "",
         "> 本文件由 `scripts/gen_schema_doc.py` 从数据库自动生成（DDL 与行数实时拉取），",
         "> 中文注释人工维护。**改库后必须重新运行脚本**，训练材料以本文件为准。",
-        f"> 生成时间：2026-09-20｜账号：{cfg['user']}（只读）｜库：{cfg['database']}",
+        f"> 生成时间：{time.strftime('%Y-%m-%d')}｜账号：{cfg['user']}（只读）｜库：{cfg['database']}",
         "",
         "## 0. 表关系与 JOIN 图谱",
         "",
