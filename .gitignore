@@ -15,6 +15,8 @@ logs/
 chroma/
 # 第三方示例库原始 SQL/数据（体积大且非本项目产物，由 scripts/install_sakila.py 下载）
 datasets/*/sql/
+# CSV 导入生成的 SQLite 库文件（运行产物，可由 CSV 重建）
+datasets/*/data.db
 
 # 系统
 .DS_Store

@@ -1,7 +1,7 @@
 """编排引擎——「检索 → 生成 → 执行 → 校验 →（自纠错/守卫）→ 总结」端到端链路。
 
 编排流程由 chatbi/graph.py 的 **StateGraph** 显式表达（节点=各步骤、条件边=路由）；
-本模块负责：① 持有资源（vanna 生成器、ReadOnlyExecutor 执行闸、LLM client）② 提供被图节点复用的
+本模块负责：① 持有资源（vanna 生成器、只读执行闸、LLM client）② 提供被图节点复用的
 helper（_repair_sql / _rewrite_sql / _summarize / _log_trace）③ 把图的最终 state 映射回 Answer。
 
 职责边界：数据(MySQL chatbi_ro) / 知识(三路训练+chroma) / 生成(vanna) / 评估(eval) 保持独立；
@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from chatbi.executor import ReadOnlyExecutor, SqlError, SqlResult
+from chatbi.executor import SqlError, SqlResult, executor_for_dataset
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -69,7 +69,7 @@ class Answer:
 
 
 class ChatBIEngine:
-    """问数引擎：vanna 负责「检索+生成」，ReadOnlyExecutor 负责「执行」，编排流程由 StateGraph 表达。
+    """问数引擎：vanna 负责「检索+生成」，只读执行闸负责「执行」，编排流程由 StateGraph 表达。
 
     dataset 指定用哪套训练材料 + 连哪个库（默认 "olist"）；解析规则见 chatbi/datasets.py。
     """
@@ -98,8 +98,7 @@ class ChatBIEngine:
         self._client = new_llm_client(key)
         # vanna 只用于「生成 SQL / 检索 DDL」，不调 connect_to_mysql / run_sql —— 执行走自有只读闸
         self.vn = new_vanna(self._client, chroma_dir, model=model)
-        self.executor = ReadOnlyExecutor.from_env(env_path=self.dataset.db_env_path,
-                                                  timeout_s=timeout_s, max_rows=max_rows)
+        self.executor = executor_for_dataset(self.dataset, timeout_s=timeout_s, max_rows=max_rows)
         self.logs_dir = ROOT / "logs"
 
         # 编排状态图（延迟 import 打破 engine↔graph 的模块级循环：graph 在 module 级 import 本模块的纯函数）
@@ -149,7 +148,7 @@ class ChatBIEngine:
         """通用重写：把「当前 SQL + 需要修正的原因 + 相关 DDL」回喂 LLM，要一条修正后的 SELECT。
 
         自纠错（执行报错）与守卫（空结果/口径违规）共用此入口。失败返回 None。
-        产物不直接采信——调用方一律再经 ReadOnlyExecutor 执行闸二次安检。
+        产物不直接采信——调用方一律再经只读执行闸二次安检。
         """
         ddl_hint = ""
         try:

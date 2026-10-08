@@ -9,8 +9,12 @@
     metrics.md  指标口径候选（自动生成，**需人工确认后**才算业务口径）
     qa.yaml     问答对（question / sql / type / verified）
     chroma/     该数据集独立向量库（运行产物，已 gitignore）
+    dataset.yaml  后端清单（backend: mysql|sqlite、sqlite 库文件路径、label）
 
-连接凭据在 `config/db_<name>.env`（已 gitignore），由接入时创建的最小权限只读账号提供。
+两种后端：
+    mysql   连接凭据在 `config/db_<name>.env`（已 gitignore），由接入时创建的最小权限只读账号提供
+    sqlite  库文件在 `datasets/<name>/data.db`（已 gitignore），由 CSV 导入生成；
+            执行器以 mode=ro 只读打开，无凭据概念
 
 口径守卫规则按数据集隔离：只有 olist 携带已人工确认的规则（见 chatbi/guards.py）。
 新数据集默认为空——口径是业务定义，自动生成的候选未经确认，拿它当规则去强制
@@ -45,8 +49,10 @@ class Materials:
 class Dataset:
     name: str
     label: str
-    db_env_path: Path               # 只读账号连接信息（gitignore）
     chroma_dir: Path                # 独立向量库目录
+    backend: str = "mysql"          # mysql | sqlite
+    db_env_path: Path | None = None     # mysql：只读账号连接信息（gitignore）
+    sqlite_path: Path | None = None     # sqlite：库文件路径（无凭据）
     caliber_rules: tuple = ()       # 口径守卫规则；空 = 该库暂无已确认口径
     materials_dir: Path | None = None   # None = 材料来自 chatbi/knowledge.py 常量（olist）
 
@@ -57,31 +63,51 @@ def resolve(name: str = DEFAULT_DATASET) -> Dataset:
         return Dataset(
             name="olist",
             label="Olist 电商数仓（ecommerce，9 表 / 155 万行）",
-            db_env_path=CONFIG_DIR / "db_ro.env",
             chroma_dir=ROOT / "chroma",
+            backend="mysql",
+            db_env_path=CONFIG_DIR / "db_ro.env",
             caliber_rules=tuple(METRIC_RULES),
             materials_dir=None,
         )
 
     d = DATASETS_DIR / name
+    manifest = d / "dataset.yaml"
+    meta: dict = {}
+    if manifest.exists():
+        meta = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+    backend = str(meta.get("backend", "mysql")).strip().lower()
+    label = str(meta.get("label") or name)
+
     if not d.is_dir() or not (d / "schema.md").exists():
         raise RuntimeError(
             f"未找到数据集 '{name}'（期望 {d / 'schema.md'}）。"
             f"可用数据集：{', '.join(list_datasets())}；"
             f"接入新库：uv run python scripts/onboard.py"
         )
+
+    if backend == "sqlite":
+        rel = str(meta.get("sqlite_path") or "data.db")
+        sp = Path(rel) if Path(rel).is_absolute() else d / rel
+        if not sp.exists():
+            raise RuntimeError(f"数据集 '{name}' 声明 sqlite 后端但库文件不存在：{sp}；"
+                               f"请重跑 scripts/onboard.py --csv")
+        return Dataset(name=name, label=label, chroma_dir=d / "chroma", backend="sqlite",
+                       db_env_path=None, sqlite_path=sp, caliber_rules=(), materials_dir=d)
+
     env_path = CONFIG_DIR / f"db_{name}.env"
     if not env_path.exists():
         raise RuntimeError(
             f"数据集 '{name}' 缺连接凭据 {env_path}：请先建最小权限只读账号并写入该文件"
         )
     label_file = d / "dataset.txt"
-    label = label_file.read_text(encoding="utf-8").strip() if label_file.exists() else name
+    if not meta.get("label") and label_file.exists():
+        label = label_file.read_text(encoding="utf-8").strip() or name
     return Dataset(
         name=name,
         label=label,
-        db_env_path=env_path,
         chroma_dir=d / "chroma",
+        backend="mysql",
+        db_env_path=env_path,
         caliber_rules=(),          # 未经人工确认的口径不作为强制规则，见模块注释
         materials_dir=d,
     )
