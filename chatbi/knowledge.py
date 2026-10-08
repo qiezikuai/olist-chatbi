@@ -138,8 +138,14 @@ EXTRA_QA = [
 DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.2"
 
 
-def new_vanna(client, chroma_dir: Path, model: str = DEFAULT_MODEL):
-    """构造 vanna 组合实例（需外部注入带 base_url 的 OpenAI client，见模块注释）。"""
+def new_vanna(client, chroma_dir: Path, model: str = DEFAULT_MODEL, dialect: str | None = None):
+    """构造 vanna 组合实例（需外部注入带 base_url 的 OpenAI client，见模块注释）。
+
+    dialect 会进入 vanna 的生成提示词（"You are a {dialect} expert"、要求输出
+    {dialect}-compliant 的 SQL）。默认 None = 不传，vanna 内部回落为通用 "SQL"——
+    Olist/sakila 的既有材料正是这么训的，改动它会改变已验证基线，故只在 sqlite
+    数据集上显式传 "SQLite"。
+    """
     from vanna.openai import OpenAI_Chat
     from vanna.chromadb import ChromaDB_VectorStore
 
@@ -148,8 +154,10 @@ def new_vanna(client, chroma_dir: Path, model: str = DEFAULT_MODEL):
             ChromaDB_VectorStore.__init__(self, config=config)
             OpenAI_Chat.__init__(self, client=client, config=config)
 
-    return MyVanna(client=client,
-                   config={"model": model, "path": str(chroma_dir), "language": "中文"})
+    config = {"model": model, "path": str(chroma_dir), "language": "中文"}
+    if dialect:
+        config["dialect"] = dialect
+    return MyVanna(client=client, config=config)
 
 
 def new_llm_client(api_key: str):
@@ -165,7 +173,7 @@ def connect_mysql(vn, db_cfg: dict) -> None:
 
 def build(llm_key: str | None = None, db_cfg: dict | None = None,
           tune: bool = True, chroma_dir: str | Path | None = None,
-          materials=None):
+          materials=None, dataset=None):
     """干净重建向量库：rm-rf → 三路训练 → sleep(2) → 重新实例化。返回可查询实例。
 
     materials=None（默认）：材料取本模块的 Olist 常量。
@@ -173,12 +181,20 @@ def build(llm_key: str | None = None, db_cfg: dict | None = None,
       tune=False（基线复现）：仅 10 组问答对、无补充——知识库随之降级。
     materials=Materials：用外部给定的三路材料（其他数据集由 scripts/onboard.py 生成，
       经 chatbi/datasets.py 解析）。此时 tune 不起作用——材料已是定稿。
+    dataset=Dataset：按该数据集的后端决定连接方式与生成方言。缺省解析为 olist。
+
+    后端差异：mysql 训练前 connect_to_mysql（vanna 的 DB 连接只服务于它自带的 run_sql，
+      本项目执行走自有只读闸）；sqlite 不连库——三路材料已含全部 DDL，且生成提示词经
+      dialect="SQLite" 适配方言（vanna 的提示词是 "You are a {dialect} expert"）。
     """
-    from chatbi.datasets import Materials
+    from chatbi.datasets import Materials, resolve
 
     key = llm_key or read_llm_key()
-    cfg = db_cfg or read_db_config()
-    chroma_dir = Path(chroma_dir) if chroma_dir else ROOT / "chroma"
+    ds = dataset or resolve()
+    cfg = db_cfg if db_cfg is not None else (
+        None if ds.backend == "sqlite" else read_db_config(ds.db_env_path))
+    chroma_dir = Path(chroma_dir) if chroma_dir else ds.chroma_dir
+    dialect = "SQLite" if ds.backend == "sqlite" else None
 
     if materials is None:
         materials = Materials(
@@ -190,10 +206,15 @@ def build(llm_key: str | None = None, db_cfg: dict | None = None,
     else:
         doc_note = ""
 
+    def new_instance():
+        vn = new_vanna(new_llm_client(key), chroma_dir, dialect=dialect)  # 自建 client 注入 base_url
+        if cfg is not None:
+            connect_mysql(vn, cfg)
+        return vn
+
     shutil.rmtree(chroma_dir, ignore_errors=True)      # ① 干净重建，避免脏段（勿删，见模块注释）
 
-    vn = new_vanna(new_llm_client(key), chroma_dir)    # ② 自建 client 注入 base_url
-    connect_mysql(vn, cfg)
+    vn = new_instance()
 
     # vanna 的 train() 会把每条 DDL 全文打印到 stdout，16 表即刷屏；
     # 屏蔽其输出、只保留本模块的进度行（同 graph.py 屏蔽 vanna prompt 噪声的做法）。
@@ -213,7 +234,6 @@ def build(llm_key: str | None = None, db_cfg: dict | None = None,
     print(f"[训练] 第3路 问答对：{len(materials.qa_pairs)} 组")
 
     time.sleep(2)                                      # ③ 给 HNSW 段落盘留窗口
-    vn = new_vanna(new_llm_client(key), chroma_dir)    # ④ 重新实例化（冷加载验证）
-    connect_mysql(vn, cfg)
+    vn = new_instance()                                # ④ 重新实例化（冷加载验证）
     print("[训练] 重新实例化完成（持久化可加载验证）")
     return vn

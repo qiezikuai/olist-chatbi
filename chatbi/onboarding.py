@@ -23,6 +23,7 @@ from __future__ import annotations
 import getpass
 import json
 import re
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,15 +33,25 @@ import yaml
 
 from chatbi import knowledge
 from chatbi.comparator import results_match
-from chatbi.datasets import CONFIG_DIR, DATASETS_DIR, Materials
+from chatbi.csv_import import import_csv
+from chatbi.datasets import CONFIG_DIR, DATASETS_DIR, Materials, resolve
 from chatbi.engine import ChatBIEngine
-from chatbi.executor import ReadOnlyExecutor
+from chatbi.executor import executor_for_dataset
 from chatbi.secrets import read_db_config, read_llm_key
 
 DEFAULT_QA_COUNT = 12
 TRIAL_QUESTIONS = 3
 MAX_BRIEF_CHARS = 60_000        # 发给 LLM 的表结构摘要上限，超出截断
 DATASET_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+
+# 方言提示：SQLite 与 MySQL 的日期函数/标识符/内置函数差异是生成 SQL 最大的坑，
+# 必须在提示词里讲清，否则模型会照搬 MySQL 写法（DATE_FORMAT/NOW()/反引号）。
+SQLITE_DIALECT_NOTE = (
+    "目标数据库是 **SQLite**（不是 MySQL）：日期时间以 TEXT 存储（形如 'YYYY-MM-DD HH:MM:SS'），"
+    "按月/年分组用 substr(col,1,7) 或 strftime('%Y-%m', col)；没有 NOW()/DATE_FORMAT()/IF()，"
+    "条件取值用 CASE WHEN；字符串拼接用 ||；标识符用双引号或裸名，**不要用反引号**；"
+    "LIMIT 语法与 MySQL 相同。")
+MYSQL_DIALECT_NOTE = "目标数据库是 MySQL 8。"
 
 # 生成材料会入库，不得带 LLM 套话/自我指涉。这份清单本身可以公开。
 AI_TELL_WORDS = ("作为一个AI", "作为 AI", "作为一个语言模型", "作为语言模型",
@@ -143,6 +154,44 @@ def warn_if_writable(cfg: dict) -> list:
         r"\b(ALL PRIVILEGES|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|GRANT OPTION)\b", grants, re.I)})
 
 
+def extract_schema_sqlite(db_path) -> SchemaInfo:
+    """从 SQLite 库文件提取表结构。DDL 取自 sqlite_master（含完整列定义）。"""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        tables = conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
+        if not tables:
+            raise RuntimeError(f"SQLite 库 {db_path} 里没有表，无法接入")
+        info = SchemaInfo(database=Path(db_path).stem, views=[])
+        for name, ddl in tables:
+            n = conn.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+            cols = conn.execute(f'PRAGMA table_info("{name}")').fetchall()
+            col_list = [(c[1], c[2] or "TEXT", "NO" if c[3] else "YES",
+                         "PRI" if c[5] else "", "") for c in cols]
+            for fk in conn.execute(f'PRAGMA foreign_key_list("{name}")').fetchall():
+                info.fks.append({"table": name, "column": fk[3],
+                                 "ref_table": fk[2], "ref_column": fk[4]})
+            info.tables.append(TableInfo(name=name, rows=n, rows_exact=True,
+                                         ddl=(ddl or "").strip(), columns=col_list))
+        return info
+    finally:
+        conn.close()
+
+
+def write_manifest(ds_dir: Path, name: str, label: str, backend: str,
+                   sqlite_rel: str | None = None, source: str = "") -> Path:
+    """写 datasets/<name>/dataset.yaml：后端与库位置的清单，resolve() 据此解析。"""
+    payload = {"backend": backend, "label": label}
+    if sqlite_rel:
+        payload["sqlite_path"] = sqlite_rel
+    if source:
+        payload["source"] = source
+    p = ds_dir / "dataset.yaml"
+    p.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return p
+
+
 def fk_lines(info: SchemaInfo) -> list:
     return [f"{fk['table']}.{fk['column']} -> {fk['ref_table']}.{fk['ref_column']}" for fk in info.fks]
 
@@ -220,10 +269,11 @@ def llm_json(client, model: str, system: str, user: str):
     return obj
 
 
-def gen_metrics(client, model: str, info: SchemaInfo) -> str:
+def gen_metrics(client, model: str, info: SchemaInfo, dialect_note: str) -> str:
     system = (
         "你是数据仓库建模顾问。根据用户给出的**真实**表结构与外键关系，为这个数据库拟定一份"
         "指标口径候选清单，供后续自然语言问数使用。\n"
+        f"方言：{dialect_note}\n"
         "硬性要求：\n"
         "1. 只依据给出的表和列，绝不臆造不存在的表名、列名或取值；\n"
         "2. 严格区分两类内容并分别标注：【事实】=能从表结构直接推出的（如主键、外键、"
@@ -238,14 +288,17 @@ def gen_metrics(client, model: str, info: SchemaInfo) -> str:
     return llm_text(client, model, system, user)
 
 
-def gen_qa(client, model: str, info: SchemaInfo, metrics: str, n: int) -> list:
+def gen_qa(client, model: str, info: SchemaInfo, metrics: str, n: int, dialect_note: str) -> list:
+    join_clause = ("多表关联（按外键 JOIN）" if info.fks or len(info.tables) > 1
+                   else "（本数据集只有一张表，跳过关联类，改出分组对比类）")
     system = (
-        "你是 MySQL 专家兼数据分析师。根据用户给出的**真实**表结构、外键关系与口径候选，"
+        "你是 SQL 专家兼数据分析师。根据用户给出的**真实**表结构、外键关系与口径候选，"
         f"为这个数据库设计 {n} 组「中文业务问题 + 标准 SQL」，用作自然语言问数的训练示例。\n"
+        f"方言：{dialect_note}\n"
         "硬性要求：\n"
-        "1. 只用给出的基表和列，绝不臆造；SQL 必须是 MySQL 8 可直接执行的**单条 SELECT**；\n"
+        "1. 只用给出的基表和列，绝不臆造；SQL 必须是可直接执行的**单条 SELECT**；\n"
         "2. 不要用视图、存储过程、自定义函数；不要写多语句；不要用 SELECT INTO；\n"
-        "3. 题型必须覆盖：单表聚合、多表关联（按外键 JOIN）、排序取 TOP-N；"
+        f"3. 题型必须覆盖：单表聚合、{join_clause}、排序取 TOP-N；"
         "若存在日期列则再加时序（按月/年分组）类；\n"
         "4. 1:N 关联后统计主体数量要用 COUNT(DISTINCT 主键)，不要 COUNT(*)；\n"
         "5. 问题用自然中文业务口吻，彼此不要只在字面上微调；\n"
@@ -268,23 +321,18 @@ def gen_qa(client, model: str, info: SchemaInfo, metrics: str, n: int) -> list:
 
 
 # ============================== ③ 实跑验证问答对 ==============================
-def verify_qa(cfg: dict, qa_list: list) -> tuple:
+def verify_qa(ex, qa_list: list) -> tuple:
     """逐条实跑标准 SQL。跑通的才进训练材料，跑不通的记入报告（不静默丢弃）。"""
-    ex = ReadOnlyExecutor(host=cfg["host"], user=cfg["user"], password=cfg["password"],
-                          database=cfg["database"], port=int(cfg.get("port", 3306)))
     good, bad = [], []
-    try:
-        for qa in qa_list:
-            r = ex.execute(qa["sql"])
-            if r.ok and r.row_count > 0:
-                good.append({**qa, "verified": True, "rows": r.row_count})
-            else:
-                reason = (f"{r.error.code}: {r.error.message[:120]}" if (r.error and not r.ok)
-                          else "执行成功但返回 0 行")
-                bad.append({**qa, "verified": False, "reason": reason})
-                print(f"      ✗ 淘汰：{qa['question'][:34]} —— {reason[:70]}")
-    finally:
-        ex.close()
+    for qa in qa_list:
+        r = ex.execute(qa["sql"])
+        if r.ok and r.row_count > 0:
+            good.append({**qa, "verified": True, "rows": r.row_count})
+        else:
+            reason = (f"{r.error.code}: {r.error.message[:120]}" if (r.error and not r.ok)
+                      else "执行成功但返回 0 行")
+            bad.append({**qa, "verified": False, "reason": reason})
+            print(f"      ✗ 淘汰：{qa['question'][:34]} —— {reason[:70]}")
     return good, bad
 
 
@@ -367,12 +415,21 @@ def trial_run(name: str, good: list, k: int = TRIAL_QUESTIONS) -> list:
 
 
 def write_report(ds_dir: Path, name: str, info: SchemaInfo, counts: dict,
-                 bad: list, trials: list, risky_grants: list) -> Path:
+                 bad: list, trials: list, risky_grants: list,
+                 backend: str = "mysql", source: str = "") -> Path:
     passed = sum(1 for t in trials if t["ok"])
+    if backend == "sqlite":
+        sec = "SQLite 库文件以只读模式（mode=ro）打开，写操作在读只层即失败"
+    else:
+        sec = "仅 SELECT" if not risky_grants else "含写权限（见第 4 节）"
     L = [
         f"# {name} 数据源接入报告", "",
         f"> 生成时间：{time.strftime('%Y-%m-%d %H:%M:%S')}｜生成方式：`scripts/onboard.py`",
-        f"> 目标库：`{info.database}`｜接入账号权限：{'仅 SELECT' if not risky_grants else '含写权限（见第 4 节）'}", "",
+        f"> 后端：{backend}｜目标库：`{info.database}`｜接入权限：{sec}",
+    ]
+    if source:
+        L.append(f"> 数据来源：{source}")
+    L += ["",
         "## 1. 库概况（读自库，属事实）", "",
         f"- 基表 **{len(info.tables)}** 张，合计 **{info.total_rows:,}** 行"
         + (f"；视图 {len(info.views)} 个（未纳入训练材料）" if info.views else ""),
@@ -462,7 +519,16 @@ def normalize_dataset_name(name: str) -> str:
 
 # ============================== 主流程 ==============================
 def run(args) -> int:
-    if args.db_env:
+    csv_path = Path(args.csv) if getattr(args, "csv", None) else None
+    header_names = None
+    if getattr(args, "header_names", None):
+        header_names = [c.strip() for c in args.header_names.split(",") if c.strip()]
+
+    cfg, source = None, ""
+    if csv_path:
+        name = args.dataset or csv_path.stem
+        source = f"CSV 文件 {csv_path}"
+    elif args.db_env:
         env_path = Path(args.db_env)
         if not env_path.is_absolute():
             env_path = CONFIG_DIR.parent / env_path
@@ -480,45 +546,68 @@ def run(args) -> int:
 
     ds_dir = DATASETS_DIR / name
     ds_dir.mkdir(parents=True, exist_ok=True)
-    env_out = save_db_env(name, cfg)      # 引擎按约定从 config/db_<name>.env 取连接信息
-    print(f"\n数据集：{name}｜目标库：{cfg['database']}｜材料目录：{ds_dir}")
-    print(f"连接凭据：{env_out}（已被 .gitignore 排除）")
 
-    risky = warn_if_writable(cfg)
-    if risky:
-        print(f"⚠ 该账号具备写权限（{', '.join(risky)}）；本项目设计前提是仅 SELECT 的只读账号，"
-              f"建议另建最小权限账号。仍将继续，但会记入接入报告的安全提示。")
+    risky: list = []
+    if csv_path:
+        db_file = ds_dir / "data.db"
+        print(f"\n[⓪] CSV 导入：{csv_path} → {db_file}")
+        summary = import_csv(csv_path, db_file, header_names=header_names)
+        print(f"      ✓ 表 {summary['table']}：{summary['row_count']:,} 行｜编码 {summary['encoding']}"
+              f"｜分隔符 {summary['delimiter']!r}｜表头："
+              f"{'检测到' if summary['header_detected'] else '未检测到（列名人工给定或合成）'}")
+        if not summary["header_detected"] and not header_names:
+            print("      ⚠ 未检测到表头且未给列名，已合成 col_1..col_N。"
+                  "建议用 --header-names 给真实列名后重跑，问数效果会明显更好。")
+        backend = "sqlite"
+        write_manifest(ds_dir, name, label=f"{name}（CSV 导入）", backend=backend,
+                       sqlite_rel="data.db", source=str(csv_path))
+    else:
+        env_out = save_db_env(name, cfg)      # 引擎按约定从 config/db_<name>.env 取连接信息
+        print(f"连接凭据：{env_out}（已被 .gitignore 排除）")
+        risky = warn_if_writable(cfg)
+        if risky:
+            print(f"⚠ 该账号具备写权限（{', '.join(risky)}）；本项目设计前提是仅 SELECT 的只读账号，"
+                  f"建议另建最小权限账号。仍将继续，但会记入接入报告的安全提示。")
+        backend = "mysql"
+        write_manifest(ds_dir, name, label=str(cfg["database"]), backend=backend)
+
+    print(f"\n数据集：{name}｜后端：{backend}｜材料目录：{ds_dir}")
 
     print("\n[① /5] 提取表结构（DDL + 行数 + 外键）…")
-    info = extract_schema(cfg)
+    info = extract_schema_sqlite(ds_dir / "data.db") if backend == "sqlite" else extract_schema(cfg)
     schema_path = write_schema_md(ds_dir, info)
     print(f"      ✓ {len(info.tables)} 张基表 / {info.total_rows:,} 行 / {len(info.fks)} 条外键 "
           f"→ {schema_path.name}")
+
+    ds = resolve(name)                    # 清单与 schema.md 已落盘，此时可解析
+    ex = executor_for_dataset(ds)
+    dialect_note = SQLITE_DIALECT_NOTE if backend == "sqlite" else MYSQL_DIALECT_NOTE
 
     key = read_llm_key()
     client = knowledge.new_llm_client(key)          # 注入 base_url，见 DECISIONS D2
     model = knowledge.DEFAULT_MODEL
 
-    print(f"\n[② /5] LLM 生成候选指标口径（{model}）…")
-    metrics_body = gen_metrics(client, model, info)
+    print(f"\n[② /5] LLM 生成候选指标口径（{model}，方言 {backend}）…")
+    metrics_body = gen_metrics(client, model, info, dialect_note)
     metrics_path = write_metrics_md(ds_dir, info, metrics_body)
     print(f"      ✓ {len(metrics_body):,} 字 → {metrics_path.name}（全部标注为待人工确认）")
 
     print(f"\n[③ /5] LLM 生成 {args.qa_count} 组问答对，并逐条实跑验证…")
-    qa_raw = gen_qa(client, model, info, metrics_body, args.qa_count)
+    qa_raw = gen_qa(client, model, info, metrics_body, args.qa_count, dialect_note)
     print(f"      生成 {len(qa_raw)} 组，开始验证：")
-    good, bad = verify_qa(cfg, qa_raw)
+    good, bad = verify_qa(ex, qa_raw)
+    ex.close()
     qa_path = write_qa_yaml(ds_dir, name, info, good)
     print(f"      ✓ 验证通过 {len(good)}/{len(qa_raw)} 组 → {qa_path.name}")
     if not good:
-        print("✗ 没有任何问答对通过实跑验证，无法训练。请检查账号权限与库内容。")
+        print("✗ 没有任何问答对通过实跑验证，无法训练。请检查库内容或方言提示。")
         return 1
 
     print(f"\n[④ /5] 训练该数据集独立向量库 → {ds_dir / 'chroma'}")
     materials = Materials(ddl=[t.ddl for t in info.tables],
                           documentation=metrics_path.read_text(encoding="utf-8").strip(),
                           qa_pairs=[{"question": q["question"], "sql": q["sql"]} for q in good])
-    knowledge.build(llm_key=key, db_cfg=cfg, chroma_dir=ds_dir / "chroma", materials=materials)
+    knowledge.build(llm_key=key, db_cfg=cfg, dataset=ds, materials=materials)
 
     trials = []
     if args.skip_trial:
@@ -530,11 +619,12 @@ def run(args) -> int:
     report = write_report(ds_dir, name, info,
                           counts={"ddl": len(info.tables), "metrics_chars": len(metrics_body),
                                   "qa_gen": len(qa_raw), "qa_good": len(good), "qa_bad": len(bad)},
-                          bad=bad, trials=trials, risky_grants=risky)
+                          bad=bad, trials=trials, risky_grants=risky,
+                          backend=backend, source=source)
 
     passed = sum(1 for t in trials if t["ok"])
     print(f"\n{'=' * 64}")
-    print(f"接入完成：{name}（库 {info.database}）")
+    print(f"接入完成：{name}（后端 {backend}｜库 {info.database}）")
     print(f"  材料：{schema_path.name} / {metrics_path.name} / {qa_path.name}")
     print(f"  向量库：{ds_dir / 'chroma'}")
     if trials:
