@@ -119,7 +119,7 @@ def build_graph(engine):
             return {"empty_retried": True, "guard_trace": gt, "guard_route": "summarize"}
 
         # 口径守卫
-        violations = check_caliber(q, sql)
+        violations = check_caliber(q, sql, engine.caliber_rules)
         if violations and not state.get("caliber_retried"):
             fixed = engine._rewrite_sql(q, sql, _caliber_hint(violations))
             gt["caliber_trigger"] = True
@@ -133,7 +133,8 @@ def build_graph(engine):
                     "guard_trace": gt, "guard_route": "summarize"}
 
         # 干净：在最终 SQL 上复检口径
-        return {"guard_violations": check_caliber(q, sql), "guard_trace": gt, "guard_route": "summarize"}
+        return {"guard_violations": check_caliber(q, sql, engine.caliber_rules),
+                "guard_trace": gt, "guard_route": "summarize"}
 
     def summarize(state: AgentState) -> dict:
         """⑤ 总结：确定性格式化（单值→句子 / 多行→表格），不调用 LLM。"""

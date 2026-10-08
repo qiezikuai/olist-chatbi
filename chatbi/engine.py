@@ -69,20 +69,28 @@ class Answer:
 
 
 class ChatBIEngine:
-    """问数引擎：vanna 负责「检索+生成」，ReadOnlyExecutor 负责「执行」，编排流程由 StateGraph 表达。"""
+    """问数引擎：vanna 负责「检索+生成」，ReadOnlyExecutor 负责「执行」，编排流程由 StateGraph 表达。
 
-    def __init__(self, chroma_path: str | Path | None = None,
+    dataset 指定用哪套训练材料 + 连哪个库（默认 "olist"）；解析规则见 chatbi/datasets.py。
+    """
+
+    def __init__(self, dataset: str = "olist", chroma_path: str | Path | None = None,
                  model: str = "deepseek-ai/DeepSeek-V3.2",
                  timeout_s: int = 10, max_rows: int = 1000,
                  llm_key: str | None = None):
+        from chatbi.datasets import resolve
         from chatbi.knowledge import new_llm_client, new_vanna
         from chatbi.secrets import read_llm_key
 
-        chroma_dir = Path(chroma_path) if chroma_path else ROOT / "chroma"
+        self.dataset = resolve(dataset)
+        # 口径规则按数据集隔离：Olist 携带已人工确认的规则，其他数据集为空（见 chatbi/datasets.py）
+        self.caliber_rules = self.dataset.caliber_rules
+        chroma_dir = Path(chroma_path) if chroma_path else self.dataset.chroma_dir
         # 冷加载已训练的向量库（未训练/空目录则给出明确指引，构建时序见 chatbi/knowledge.py）。
         if not chroma_dir.exists() or not any(chroma_dir.iterdir()):
             raise RuntimeError(
-                f"未找到已训练的向量库（{chroma_dir}）。请先运行：uv run python scripts/train.py"
+                f"数据集 '{self.dataset.name}' 没有已训练的向量库（{chroma_dir}）。"
+                f"请先运行：uv run python scripts/train.py --dataset {self.dataset.name}"
             )
 
         key = llm_key or read_llm_key()
@@ -90,7 +98,8 @@ class ChatBIEngine:
         self._client = new_llm_client(key)
         # vanna 只用于「生成 SQL / 检索 DDL」，不调 connect_to_mysql / run_sql —— 执行走自有只读闸
         self.vn = new_vanna(self._client, chroma_dir, model=model)
-        self.executor = ReadOnlyExecutor.from_env(timeout_s=timeout_s, max_rows=max_rows)
+        self.executor = ReadOnlyExecutor.from_env(env_path=self.dataset.db_env_path,
+                                                  timeout_s=timeout_s, max_rows=max_rows)
         self.logs_dir = ROOT / "logs"
 
         # 编排状态图（延迟 import 打破 engine↔graph 的模块级循环：graph 在 module 级 import 本模块的纯函数）

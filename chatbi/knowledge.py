@@ -15,6 +15,8 @@ api.openai.com（见 DECISIONS「base_url 被吞」条目）。
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import shutil
 import time
 from pathlib import Path
@@ -162,34 +164,53 @@ def connect_mysql(vn, db_cfg: dict) -> None:
 
 
 def build(llm_key: str | None = None, db_cfg: dict | None = None,
-          tune: bool = True, chroma_dir: str | Path | None = None):
+          tune: bool = True, chroma_dir: str | Path | None = None,
+          materials=None):
     """干净重建向量库：rm-rf → 三路训练 → sleep(2) → 重新实例化。返回可查询实例。
 
-    tune=True（生产正源）：12 组问答对 + 口径摘要 + 口径补充。
-    tune=False（基线复现）：仅 10 组问答对、无补充——知识库随之降级。
+    materials=None（默认）：材料取本模块的 Olist 常量。
+      tune=True（生产正源）：12 组问答对 + 口径摘要 + 口径补充。
+      tune=False（基线复现）：仅 10 组问答对、无补充——知识库随之降级。
+    materials=Materials：用外部给定的三路材料（其他数据集由 scripts/onboard.py 生成，
+      经 chatbi/datasets.py 解析）。此时 tune 不起作用——材料已是定稿。
     """
+    from chatbi.datasets import Materials
+
     key = llm_key or read_llm_key()
     cfg = db_cfg or read_db_config()
     chroma_dir = Path(chroma_dir) if chroma_dir else ROOT / "chroma"
+
+    if materials is None:
+        materials = Materials(
+            ddl=load_ddl(),
+            documentation=METRICS_CONTEXT.strip() + ("\n" + EXTRA_DOC.strip() if tune else ""),
+            qa_pairs=list(QA_PAIRS) + (list(EXTRA_QA) if tune else []),
+        )
+        doc_note = "（含口径补充）" if tune else ""
+    else:
+        doc_note = ""
 
     shutil.rmtree(chroma_dir, ignore_errors=True)      # ① 干净重建，避免脏段（勿删，见模块注释）
 
     vn = new_vanna(new_llm_client(key), chroma_dir)    # ② 自建 client 注入 base_url
     connect_mysql(vn, cfg)
 
-    ddls = load_ddl()
-    for ddl in ddls:
-        vn.train(ddl=ddl)
-    print(f"[训练] 第1路 DDL：{len(ddls)} 条")
+    # vanna 的 train() 会把每条 DDL 全文打印到 stdout，16 表即刷屏；
+    # 屏蔽其输出、只保留本模块的进度行（同 graph.py 屏蔽 vanna prompt 噪声的做法）。
+    with contextlib.redirect_stdout(io.StringIO()):
+        for ddl in materials.ddl:
+            vn.train(ddl=ddl)
+    print(f"[训练] 第1路 DDL：{len(materials.ddl)} 条")
 
-    doc = METRICS_CONTEXT.strip() + ("\n" + EXTRA_DOC.strip() if tune else "")
-    vn.train(documentation=doc)
-    print(f"[训练] 第2路 指标口径文档：1 篇{'（含口径补充）' if tune else ''}")
+    if materials.documentation:
+        with contextlib.redirect_stdout(io.StringIO()):
+            vn.train(documentation=materials.documentation)
+    print(f"[训练] 第2路 指标口径文档：{1 if materials.documentation else 0} 篇{doc_note}")
 
-    qa_pairs = QA_PAIRS + (EXTRA_QA if tune else [])
-    for qa in qa_pairs:
-        vn.train(question=qa["question"], sql=qa["sql"])
-    print(f"[训练] 第3路 问答对：{len(qa_pairs)} 组")
+    with contextlib.redirect_stdout(io.StringIO()):
+        for qa in materials.qa_pairs:
+            vn.train(question=qa["question"], sql=qa["sql"])
+    print(f"[训练] 第3路 问答对：{len(materials.qa_pairs)} 组")
 
     time.sleep(2)                                      # ③ 给 HNSW 段落盘留窗口
     vn = new_vanna(new_llm_client(key), chroma_dir)    # ④ 重新实例化（冷加载验证）

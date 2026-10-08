@@ -4,16 +4,20 @@
 本文件是编排状态图的可见入口：逐步打印每一阶段，代码可逐行讲。
 
 运行：
-  uv run python main.py                       # 跑 3 个内置 demo 问题
+  uv run python main.py                       # 跑 3 个内置 demo 问题（默认数据集 olist）
   uv run python main.py "总 GMV 是多少？" ...   # 跑自定义问题
+  uv run python main.py --dataset sakila "..."  # 换数据集（见 chatbi/datasets.py）
 
-前置：向量库需已训练（见 README「复现步骤」/ scripts/train.py）。
-凭据约束：LLM Key 与 DB 凭据由 engine/executor 自行从 .env / config/db_ro.env 读取，绝不打印。
+前置：该数据集的向量库需已训练（见 README「复现步骤」/ scripts/train.py --dataset）。
+凭据约束：LLM Key 与 DB 凭据由 engine/executor 自行从 .env 与数据集对应的
+config/db_*.env 读取，绝不打印。
 """
 from __future__ import annotations
 
+import argparse
 import sys
 
+from chatbi.datasets import resolve
 from chatbi.engine import ChatBIEngine
 
 # 中文 Windows 控制台/管道下 stdout 用 GBK，✓ 等符号会触发 UnicodeEncodeError
@@ -70,13 +74,40 @@ def run_question(engine: ChatBIEngine, idx: int, question: str) -> bool:
     return True
 
 
+def dataset_demo_questions(ds, n: int = 3) -> list[str]:
+    """非内置数据集的示例问题：取其问答对前 n 题（这些 SQL 在接入时已实跑验证过）。"""
+    from chatbi.datasets import load_materials
+    try:
+        return [qa["question"] for qa in load_materials(ds).qa_pairs[:n]]
+    except Exception:
+        return []      # 材料缺失/损坏时不崩，由调用方给出明确提示
+
+
 def main() -> int:
-    questions = sys.argv[1:] or DEMO_QUESTIONS
+    ap = argparse.ArgumentParser(description="ChatBI 端到端问数（CLI）")
+    ap.add_argument("--dataset", default="olist", help="数据集名，默认 olist")
+    ap.add_argument("questions", nargs="*", help="要问的问题；不给则用该数据集的示例问题")
+    args = ap.parse_args()
+
+    try:
+        ds = resolve(args.dataset)
+    except RuntimeError as e:
+        print(f"数据集解析失败：{e}")
+        return 2
+
+    questions = args.questions or (DEMO_QUESTIONS if ds.name == "olist"
+                                   else dataset_demo_questions(ds))
+    if not questions:
+        print("未给出问题，且该数据集没有可用的示例问答对。请在命令行直接给出问题。")
+        return 2
+
     print("ChatBI · 端到端编排（LangGraph 状态图）")
+    if ds.name != "olist":
+        print(f"数据集：{ds.name}（{ds.label}）")
     print(f"待答问题 {len(questions)} 个；执行链：检索→生成→执行(只读闸)→校验→总结")
 
     try:
-        engine = ChatBIEngine()
+        engine = ChatBIEngine(dataset=ds.name)
     except RuntimeError as e:
         print(f"初始化失败：{e}")
         return 2

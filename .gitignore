@@ -2,6 +2,7 @@
 .env
 config/db_ro.env
 config/db.env
+config/db_*.env
 
 # Python
 .venv/
@@ -12,6 +13,8 @@ __pycache__/
 # 运行产物
 logs/
 chroma/
+# 第三方示例库原始 SQL/数据（体积大且非本项目产物，由 scripts/install_sakila.py 下载）
+datasets/*/sql/
 
 # 系统
 .DS_Store
@@ -24,3 +27,4 @@ Thumbs.db
 PROJECT_BRIEF.md
 docs/PLAN_v2.md
 docs/CODE_AUDIT.md
+config/forbidden_words.txt

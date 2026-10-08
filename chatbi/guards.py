@@ -10,6 +10,7 @@ from chatbi.executor import SqlResult
 
 # 每条规则 = (意图关键词列表, 判定函数 sql_lower->是否合规, 违规时给出的口径文本)
 # 判定函数返回 True=命中口径；返回 False=违规，触发重写并把口径文本回喂 LLM。
+# 本表是 Olist 数据集专用规则集；其他数据集的规则由 chatbi/datasets.py 按名解析。
 METRIC_RULES = [
     (
         # 注：不含"总金额"——它过于宽泛，会误命中"信用卡支付的总金额"等支付类问题，
@@ -41,12 +42,16 @@ METRIC_RULES = [
 ]
 
 
-def check_caliber(question: str, sql: str) -> list[str]:
-    """返回违反的口径规则文本列表；空列表 = 全部命中（或问题不涉及任何已固化口径）。"""
+def check_caliber(question: str, sql: str, rules=METRIC_RULES) -> list[str]:
+    """返回违反的口径规则文本列表；空列表 = 全部命中（或问题不涉及任何已固化口径）。
+
+    rules 按数据集传入：默认 METRIC_RULES 是 Olist 已人工确认的口径；其他数据集
+    传空元组——未经确认的口径不该作为强制规则去重写 SQL（见 chatbi/datasets.py）。
+    """
     q = (question or "").lower()
     s = (sql or "").lower()
     violations: list[str] = []
-    for keywords, ok_fn, rule in METRIC_RULES:
+    for keywords, ok_fn, rule in rules:
         if any(k.lower() in q for k in keywords):
             try:
                 if not ok_fn(s):
