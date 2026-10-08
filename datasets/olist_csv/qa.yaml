@@ -1,0 +1,55 @@
+dataset: olist_csv
+database: data
+generated_at: '2026-10-08 22:34:37'
+note: 标准 SQL 均经只读账号实跑验证可执行且返回非空结果；rows 为验证时行数
+qa_pairs:
+- question: 统计每个订单状态的数量，并计算各状态订单占总订单的比例？
+  sql: SELECT order_status, COUNT(*) AS order_count, COUNT(*) * 1.0 / (SELECT COUNT(*) FROM olist_orders_dataset) AS proportion FROM olist_orders_dataset GROUP BY order_status ORDER BY order_count DESC
+  type: 单表聚合
+  verified: true
+  rows: 8
+- question: 按月份统计订单数量，查看订单的月度趋势（以客户下单时间为准）？
+  sql: SELECT substr(order_purchase_timestamp, 1, 7) AS purchase_month, COUNT(*) AS order_count FROM olist_orders_dataset GROUP BY purchase_month ORDER BY purchase_month
+  type: 时序
+  verified: true
+  rows: 25
+- question: 统计每天的平均订单数量（以客户下单时间为准）？
+  sql: SELECT substr(order_purchase_timestamp, 1, 10) AS purchase_date, COUNT(*) AS daily_orders FROM olist_orders_dataset GROUP BY purchase_date ORDER BY daily_orders DESC
+  type: 时序
+  verified: true
+  rows: 634
+- question: 按订单状态分组，统计每个状态下对应的客户数（去重计数）？
+  sql: SELECT order_status, COUNT(DISTINCT customer_id) AS customer_count FROM olist_orders_dataset GROUP BY order_status ORDER BY customer_count DESC
+  type: 单表聚合
+  verified: true
+  rows: 8
+- question: 计算每个订单从批准到交付给承运商的平均时长（天），只计算两个日期都不为空的情况？
+  sql: SELECT AVG((JULIANDAY(order_delivered_carrier_date) - JULIANDAY(order_approved_at))) AS avg_approval_to_carrier_days FROM olist_orders_dataset WHERE order_delivered_carrier_date IS NOT NULL AND order_approved_at IS NOT NULL
+  type: 单表聚合
+  verified: true
+  rows: 1
+- question: 找出实际送达日期晚于预估送达日期的订单数量及其占总订单的比例？
+  sql: SELECT SUM(CASE WHEN order_delivered_customer_date > order_estimated_delivery_date THEN 1 ELSE 0 END) AS late_orders, SUM(CASE WHEN order_delivered_customer_date > order_estimated_delivery_date THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS late_proportion FROM olist_orders_dataset WHERE order_delivered_customer_date IS NOT NULL AND order_estimated_delivery_date IS NOT NULL
+  type: 单表聚合
+  verified: true
+  rows: 1
+- question: 按年份统计订单数量（以客户下单时间为准），并按年份升序排列？
+  sql: SELECT substr(order_purchase_timestamp, 1, 4) AS purchase_year, COUNT(*) AS order_count FROM olist_orders_dataset GROUP BY purchase_year ORDER BY purchase_year
+  type: 时序
+  verified: true
+  rows: 3
+- question: 统计不同小时段（0-23点）的订单数量分布，以客户下单时间的小时为准？
+  sql: SELECT substr(order_purchase_timestamp, 12, 2) AS purchase_hour, COUNT(*) AS order_count FROM olist_orders_dataset GROUP BY purchase_hour ORDER BY purchase_hour
+  type: 单表聚合
+  verified: true
+  rows: 24
+- question: 查找那些已批准但尚未交付给承运商的订单（即批准时间不为空，但承运商交付时间为空），按批准时间倒序排列，取前20条？
+  sql: SELECT order_id, customer_id, order_status, order_approved_at FROM olist_orders_dataset WHERE order_approved_at IS NOT NULL AND order_delivered_carrier_date IS NULL ORDER BY order_approved_at DESC LIMIT 20
+  type: 排序对比
+  verified: true
+  rows: 20
+- question: 按月份统计已完成送达的订单数量（状态为'delivered'），并计算每月送达订单数占当月总订单数的比例？
+  sql: SELECT substr(order_purchase_timestamp, 1, 7) AS purchase_month, SUM(CASE WHEN order_status = 'delivered' THEN 1 ELSE 0 END) AS delivered_count, COUNT(*) as total_orders, SUM(CASE WHEN order_status = 'delivered' THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS delivered_proportion FROM olist_orders_dataset GROUP BY purchase_month HAVING total_orders > 0 ORDER BY purchase_month
+  type: 分组对比
+  verified: true
+  rows: 25

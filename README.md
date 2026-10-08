@@ -8,7 +8,7 @@
 
 技术栈：Python 3.12 · **LangGraph（编排状态图）** · vanna 0.7.9（NL2SQL RAG）· ChromaDB · DeepSeek-V3.2（经 SiliconFlow）· pymysql + MySQL 8.4 · pytest。**零 GPU、全云端 API**。
 
-**引擎与训练材料分离**：Olist 是默认数据集，`scripts/onboard.py` 可把任意 MySQL 库接入为并列的新数据集，换库不改代码（见下文[「接入你自己的数据库」](#接入你自己的数据库)）。
+**引擎与训练材料分离**：Olist 是默认数据集，`scripts/onboard.py` 可把任意 MySQL 库**或一个 CSV 文件**接入为并列的新数据集，换数据源不改代码（见下文[「接入你自己的数据库」](#接入你自己的数据库)）。
 
 ---
 
@@ -57,6 +57,7 @@ chatbi/                     # 产品代码包
   knowledge.py              # 知识层单源：三路训练材料 + 向量库构建流程
   datasets.py               # 数据集解析：按名解析材料 / 库凭据 / 向量库 / 口径规则
   onboarding.py             # 数据源接入实现正源（提表结构→生成材料→训练→试跑）
+  csv_import.py             # CSV→SQLite 导入器（编码/分隔符/表头/类型推断兜底）
   secrets.py                # 凭据/配置解析单源（.env 与 config/db_*.env，均不入库）
   ui_helpers.py             # 前端纯函数（图表推断/格式化/徽标/时间线/CSV）
 main.py                     # 端到端入口（CLI 问数，--dataset 切数据集）
@@ -78,13 +79,15 @@ datasets/                   # 非默认数据集（由 onboard.py 生成；Olist
   <name>/schema.md          #   表结构：完整 DDL + 行数 + 外键
   <name>/metrics.md         #   指标口径候选（待人工确认）
   <name>/qa.yaml            #   问答对（标准 SQL 均实跑验证过）
+  <name>/dataset.yaml       #   后端清单（backend: mysql|sqlite、库文件位置）
   <name>/onboarding_report.md #  接入报告（含自动化边界）
+  <name>/data.db            #   CSV 导入的 SQLite 库（gitignore，可由 CSV 重建）
   <name>/chroma/            #   该数据集独立向量库（gitignore）
 eval/
   questions.yaml            # 30 题留出评估集（标准 SQL + 口径标注）
   verified_results.json     # 标准 SQL 验证快照
   report.md                 # 准确率报告
-tests/                      # pytest（106 项）
+tests/                      # pytest（159 项）
 docs/
   schema.md                 # 9 表 DDL + 中文注释（从库生成）
   metrics.md                # 指标口径（唯一口径事实源）
@@ -204,6 +207,33 @@ uv run python scripts/train.py --dataset <名字>   # 用已落盘材料重建�
 | 准确率 | **需人工** | 接入只跑 3 题证明链路通，**不等于准确率**；正式数字需另建留出评估集 |
 
 因此有一条刻意的设计：**未经人工确认的口径不会被当作守卫规则强制生效**（非默认数据集的口径规则为空，见 [`chatbi/datasets.py`](chatbi/datasets.py)）。拿没确认的口径去强制重写 SQL，会把本来正确的查询改错——本项目在 Olist 评估期踩过一次同类坑（口径规则关键词过宽，误命中支付类问题）。人工确认后可把口径固化成规则，方式见 [`chatbi/guards.py`](chatbi/guards.py)。
+
+### 用你自己的 CSV（无需任何数据库）
+
+没有数据库也能接：CSV 先自动建表导入一个 SQLite 库文件，再走同一套接入流程。
+
+```bash
+uv run python scripts/onboard.py --csv 你的文件.csv --dataset <名字>
+# 无表头的 CSV 统计上无法与有表头文件区分，需人工给列名：
+uv run python scripts/onboard.py --csv iris.data --dataset iris \
+    --header-names sepal_length,sepal_width,petal_length,petal_width,species
+```
+
+导入的自动兜底：编码（utf-8 / GBK 自动探测）、分隔符（逗号 / 分号 / 制表符 / 竖线，按引号外计数判定）、空值转 NULL、短行补空长行截断、列名清洗（去 BOM 与包裹引号、非法字符转下划线、重名加序号）、按列抽样推断 INTEGER / REAL / TEXT。生成的 SQLite 库以**只读模式**打开——与 MySQL 只读账号同级的第二道闸。
+
+SQL 方言自动适配：生成提示词会声明 SQLite 方言（日期是 TEXT、用 `substr`/`strftime`、`CASE WHEN` 而非 `IF()`、不用反引号与 `DATE_FORMAT`）。实测生成的时序 SQL 用的是 `substr(ts,1,7)` 与 `JULIANDAY()`，无 MySQL 专有函数。
+
+**CSV 特有的自动化边界**：
+
+| 环节 | 程度 | 说明 |
+|---|---|---|
+| 编码 / 分隔符 / 空值 / 行宽 | 自动 · 有兜底 | 见上；都不命中时退 latin-1，宁可个别乱码不丢行 |
+| 列类型 | 自动 · 抽样推断 | 个别与列类型不符的脏值保留原文，**不丢行** |
+| **表头** | **部分自动** | 有数值信号时自动判定（如 iris.data 型）；**全文本的无表头文件需 `--header-names` 人工给列名** |
+| 列名的业务含义 | **需人工** | 合成列名 `col_1..` 会显著降低问数效果，脚本会明确警告 |
+| 表间关系 | **需人工** | 单个 CSV 只有一张表、无外键；多文件→多表为第二步，未做 |
+
+**实测（2026-10-08）**：用 99,441 行的真实订单 CSV（带引号表头、时间戳列）跑通全链路——导入 99,441 行、生成 12 组问答对验证通过 10 组（2 组因 LLM 臆造了数据中不存在的年份、实跑 0 行而被淘汰）、试跑 3/3 通过、追加 3 题与直查逐字一致（订单总数 99,441、已送达 96,478、2017-11 下单 7,544）。报告见 `datasets/olist_csv/onboarding_report.md`。
 
 ### 跨领域验证：MySQL 官方示例库 sakila
 
