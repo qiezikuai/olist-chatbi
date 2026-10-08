@@ -24,6 +24,10 @@ sys.path.insert(0, str(ROOT))
 from chatbi.engine import ChatBIEngine          # noqa: E402
 from chatbi.comparator import results_match     # noqa: E402
 
+# 中文 Windows 控制台/管道下 stdout 用 GBK，✓ 等符号会触发 UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 TYPES = ["单表聚合", "多表关联", "时序环比", "排名对比"]
 
 

@@ -16,6 +16,10 @@ import sys
 
 from chatbi.engine import ChatBIEngine
 
+# 中文 Windows 控制台/管道下 stdout 用 GBK，✓ 等符号会触发 UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # 3 个 demo 问题：覆盖「单值聚合 / 时序锚点 / 多行排名」三种返回形态
 DEMO_QUESTIONS = [
     "总共有多少笔订单？",

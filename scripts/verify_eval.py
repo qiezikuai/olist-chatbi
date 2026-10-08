@@ -20,6 +20,10 @@ from pathlib import Path
 import pymysql
 import yaml
 
+# 中文 Windows 控制台/管道下 stdout 用 GBK，✓ 等符号会触发 UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # 单值题锚点（来自 docs/metrics.md 已验证数字 + 对库实测）

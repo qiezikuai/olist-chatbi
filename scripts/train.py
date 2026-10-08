@@ -9,6 +9,10 @@
 import sys
 from pathlib import Path
 
+# 中文 Windows 控制台/管道下 stdout 用 GBK，✅ 等符号会触发 UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))  # 支持从任意 cwd 运行
