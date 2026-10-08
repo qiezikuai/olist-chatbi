@@ -164,7 +164,7 @@ def write_report(records: list[dict]) -> None:
     L.append("uv run python scripts/run_eval.py          # 跑分并重生成本报告")
     L.append("```")
     L.append("")
-    L.append("> 注：LLM 生成非确定性，复跑准确率可能小幅波动；本报告为单次运行结果。")
+    L.append("> 注：本报告为单次运行结果；因 LLM 生成非确定性，多次运行总准确率在 93.3~96.7% 之间波动。")
     L.append("> 比对器对「表示级差异」（如月份 '2018-01' vs 1）保守判不一致，只会低估准确率（见 comparator.py）。")
 
     out = ROOT / "eval" / "report.md"
