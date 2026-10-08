@@ -2,7 +2,7 @@
 
 > 生成时间：2026-10-08 22:35:55｜生成方式：`scripts/onboard.py`
 > 后端：sqlite｜目标库：`data`｜接入权限：SQLite 库文件以只读模式（mode=ro）打开，写操作在读只层即失败
-> 数据来源：CSV 文件 D:\邱泽凯_电商用户行为分析\data\olist\raw\olist_orders_dataset.csv
+> 数据来源：CSV 文件 olist_orders_dataset.csv
 
 ## 1. 库概况（读自库，属事实）
 

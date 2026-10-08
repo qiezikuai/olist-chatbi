@@ -527,7 +527,8 @@ def run(args) -> int:
     cfg, source = None, ""
     if csv_path:
         name = args.dataset or csv_path.stem
-        source = f"CSV 文件 {csv_path}"
+        # 只记文件名：本机绝对路径含个人目录结构，不该进公开仓库
+        source = f"CSV 文件 {csv_path.name}"
     elif args.db_env:
         env_path = Path(args.db_env)
         if not env_path.is_absolute():

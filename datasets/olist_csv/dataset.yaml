@@ -1,0 +1,4 @@
+backend: sqlite
+label: olist_csv（CSV 导入）
+sqlite_path: data.db
+source: olist_orders_dataset.csv
