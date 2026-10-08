@@ -1,0 +1,65 @@
+dataset: sakila
+database: sakila
+generated_at: '2026-10-08 20:38:41'
+note: 标准 SQL 均经只读账号实跑验证可执行且返回非空结果；rows 为验证时行数
+qa_pairs:
+- question: 统计每家商店的活跃顾客数量是多少？
+  sql: SELECT store_id, COUNT(*) AS active_customer_count FROM customer WHERE active = 1 GROUP BY store_id
+  type: 单表聚合
+  verified: true
+  rows: 2
+- question: 找出累计支付金额最高的前5位客户姓名及其总支付额。
+  sql: SELECT c.first_name, c.last_name, SUM(p.amount) AS total_payment FROM customer c INNER JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id ORDER BY total_payment DESC LIMIT 5
+  type: 排序对比
+  verified: true
+  rows: 5
+- question: 按年统计租赁订单总数，并按年份降序排列。
+  sql: SELECT YEAR(rental_date) AS year, COUNT(*) AS rental_count FROM rental GROUP BY YEAR(rental_date) ORDER BY year DESC
+  type: 时序
+  verified: true
+  rows: 2
+- question: 列出参演电影数量最多的10位演员的全名及其参演电影数。
+  sql: SELECT a.first_name, a.last_name, COUNT(DISTINCT fa.film_id) AS film_count FROM actor a INNER JOIN film_actor fa ON a.actor_id = fa.actor_id GROUP BY a.actor_id ORDER BY film_count DESC LIMIT 10
+  type: 排序对比
+  verified: true
+  rows: 10
+- question: 查询每个电影类别（category）的名称以及属于该类别的电影数量。
+  sql: SELECT cat.name, COUNT(DISTINCT fc.film_id) AS film_count FROM category cat INNER JOIN film_category fc ON cat.category_id = fc.category_id GROUP BY cat.category_id ORDER BY film_count DESC
+  type: 单表聚合
+  verified: true
+  rows: 16
+- question: 统计每部电影的库存拷贝数量，并列出那些库存数量大于等于5的电影标题。
+  sql: SELECT f.title, COUNT(*) AS inventory_count FROM film f INNER JOIN inventory i ON f.film_id = i.film_id GROUP BY f.film_id HAVING inventory_count >= 5 ORDER BY inventory_count DESC
+  type: 多表关联
+  verified: true
+  rows: 511
+- question: 查询每位员工处理过的租赁订单总数和总支付金额。
+  sql: SELECT s.first_name, s.last_name, COUNT(DISTINCT r.rental_id) AS rental_count, SUM(p.amount) AS total_payment_amount FROM staff s LEFT JOIN rental r ON s.staff_id = r.staff_id LEFT JOIN payment p ON r.rental_id = p.rental_id GROUP BY s.staff_id ORDER BY total_payment_amount DESC
+  type: 多表关联
+  verified: true
+  rows: 2
+- question: 找出租赁时长（length）最长的前10部电影的标题、评级和时长。
+  sql: SELECT title, rating, length FROM film WHERE length IS NOT NULL ORDER BY length DESC LIMIT 10
+  type: 排序对比
+  verified: true
+  rows: 10
+- question: 按月份统计每个商店的支付总额。
+  sql: SELECT i.store_id, DATE_FORMAT(p.payment_date, '%Y-%m') AS month, SUM(p.amount) AS total_payment FROM payment p INNER JOIN rental r ON p.rental_id = r.rental_id INNER JOIN inventory i ON r.inventory_id = i.inventory_id GROUP BY i.store_id, month ORDER BY month, store_id
+  type: 时序
+  verified: true
+  rows: 10
+- question: 查询每个国家有多少个城市。
+  sql: SELECT co.country, COUNT(*) AS city_count FROM country co INNER JOIN city ci ON co.country_id = ci.country_id GROUP BY co.country_id ORDER BY city_count DESC
+  type: 多表关联
+  verified: true
+  rows: 109
+- question: 列出那些租金率（rental_rate）高于平均租金率的所有电影标题和租金率。
+  sql: SELECT title, rental_rate FROM film WHERE rental_rate > (SELECT AVG(rental_rate) FROM film) ORDER BY rental_rate DESC
+  type: 单表聚合
+  verified: true
+  rows: 659
+- question: 找出租赁次数最多的前5部电影及其租赁次数。
+  sql: SELECT f.title, COUNT(DISTINCT r.rental_id) AS rental_count FROM film f INNER JOIN inventory i ON f.film_id = i.film_id INNER JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY f.film_id ORDER BY rental_count DESC LIMIT 5
+  type: 排序对比
+  verified: true
+  rows: 5
