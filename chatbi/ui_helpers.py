@@ -199,7 +199,7 @@ def timeline_steps(answer) -> list[tuple[str, str]]:
         if gt.get("caliber_trigger"):
             parts.append("口径违规重写：" + "；".join(gt.get("caliber_violations", [])))
         steps.append(("guards", " / ".join(parts) or "守卫检查"))
-    steps.append(("summarize", "确定性总结（不再调 LLM）"))
+    steps.append(("summarize", "确定性总结（格式化得出，不调用 LLM）"))
     return steps
 
 

@@ -5,9 +5,9 @@
 helper（_repair_sql / _rewrite_sql / _summarize / _log_trace）③ 把图的最终 state 映射回 Answer。
 
 职责边界：数据(MySQL chatbi_ro) / 知识(三路训练+chroma) / 生成(vanna) / 评估(eval) 保持独立；
-executor.py(执行闸)、guards.py(守卫)、comparator.py(比对器) 原样复用、由图节点包装，不重写。
+executor.py(执行闸)、guards.py(守卫)、comparator.py(比对器) 为独立组件，由图节点调用。
 
-为什么用 LangGraph、StateGraph 如何映射原编排：见 docs/DECISIONS.md D7。
+为什么用 LangGraph、StateGraph 如何路由：见 docs/DECISIONS.md D7。
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _clean_sql(text: str) -> str:
 
 
 def _read_llm_key(env_path: str | Path | None = None) -> str:
-    """已收敛至 chatbi/secrets.read_llm_key，此处保留薄转发以兼容旧引用。"""
+    """读取 LLM Key（实现见 chatbi/secrets）。"""
     from chatbi.secrets import read_llm_key
     return read_llm_key(env_path)
 

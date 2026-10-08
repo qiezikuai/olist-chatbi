@@ -1,13 +1,12 @@
-"""LangGraph 编排层——把自写编排主循环用 StateGraph 显式表达。
+"""LangGraph 编排层——用 StateGraph 显式表达问数主流程。
 
-原 imperative 循环（检索→生成→执行→自纠错→守卫→总结）重写为状态图：
-  节点 = 各步骤；条件边 = 失败/违规/成功的路由。
+编排状态图：节点 = 生成 / 执行 / 自纠错 / 守卫 / 总结；条件边 = 失败 / 违规 / 成功的路由。
 
-四层不变（本文件只动「编排层」）：
-  ① 数据层 MySQL+chatbi_ro ② 知识层 三路训练+chroma ③ 生成层 vanna ④ 评估层 eval/ ——均不动。
-  executor.py（只读执行闸）、guards.py（守卫）、comparator.py（比对器）原样复用、包装成节点，不重写。
+本层只承载控制流，其余各层与组件各司其职：
+  ① 数据层 MySQL+chatbi_ro ② 知识层 三路训练+chroma ③ 生成层 vanna ④ 评估层 eval/。
+  executor.py（只读执行闸）、guards.py（守卫）、comparator.py（比对器）作为独立组件被节点调用。
 
-StateGraph 映射（详见 docs/DECISIONS.md D7）：
+StateGraph 路由（详见 docs/DECISIONS.md D7）：
   START ─(有预置 sql?)→ execute | generate
   generate ─(出错?)→ summarize | execute
   execute  ─(成功→guards / 可重试错→self_correct / 不可重试或已修过→summarize)
@@ -28,7 +27,7 @@ from chatbi.guards import check_caliber, is_empty_result
 # engine 在 __init__ 内「延迟」import build_graph，故此处的 module-level import 不构成循环
 from chatbi.engine import is_retriable_error
 
-# 守卫重写提示（原 engine.apply_guards 内的文案，迁移到此）
+# 守卫重写提示
 EMPTY_HINT = ("上一条 SQL 执行成功但返回 0 行。可能是过滤值不存在（拼写/语言/日期格式不符）"
               "或条件过严。请核对口径、修正或放宽过滤条件，仍只输出一条 SELECT。")
 
@@ -60,7 +59,7 @@ class AgentState(TypedDict, total=False):
 
 
 def build_graph(engine):
-    """构建并编译编排状态图。节点为闭包，复用 engine 的资源与 helper（不重写组件）。"""
+    """构建并编译编排状态图。节点为闭包，复用 engine 的资源与 helper。"""
 
     # ---------- 节点 ----------
     def generate(state: AgentState) -> dict:
@@ -137,7 +136,7 @@ def build_graph(engine):
         return {"guard_violations": check_caliber(q, sql), "guard_trace": gt, "guard_route": "summarize"}
 
     def summarize(state: AgentState) -> dict:
-        """⑤ 总结：确定性格式化（单值→句子 / 多行→表格），不再调 LLM。"""
+        """⑤ 总结：确定性格式化（单值→句子 / 多行→表格），不调用 LLM。"""
         result = state.get("result")
         if result is None or not result.ok:
             return {"ok": False, "stage": state.get("stage", "execute"), "final_answer": ""}

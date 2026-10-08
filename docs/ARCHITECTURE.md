@@ -93,7 +93,7 @@ scripts/accept_ui.py ──> streamlit AppTest + chatbi.engine
 | guards | 0 行且未空重试 / 口径违规且未口径重试 | execute（重写复跑） |
 | guards | 干净 | summarize |
 
-收敛保证：`repairs<1`、`empty_retried`、`caliber_retried` 各限一次，总重写上限 3 次；`recursion_limit=50` 兜底。留痕：`_log_trace` → `logs/self_correction.jsonl`（gitignore）。
+终止保证：`repairs<1`、`empty_retried`、`caliber_retried` 各限一次，总重写上限 3 次；`recursion_limit=50` 兜底。留痕：`_log_trace` → `logs/self_correction.jsonl`（gitignore）。
 
 ## 5. 凭据与安全边界
 

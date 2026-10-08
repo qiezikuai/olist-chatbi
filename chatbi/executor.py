@@ -163,7 +163,7 @@ class ReadOnlyExecutor:
 
     @classmethod
     def from_env(cls, env_path: str | Path | None = None, **kw) -> "ReadOnlyExecutor":
-        """从 config/db_ro.env 读取 chatbi_ro 只读凭据构建执行器（解析收敛在 chatbi/secrets）。"""
+        """从 config/db_ro.env 读取 chatbi_ro 只读凭据构建执行器（解析实现见 chatbi/secrets）。"""
         from chatbi.secrets import read_db_config
         cfg = read_db_config(env_path)
         return cls(host=cfg['host'], user=cfg['user'], password=cfg['password'],
